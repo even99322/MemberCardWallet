@@ -23,7 +23,7 @@
 
 - Kotlin + Jetpack Compose（Material 3），minSdk 26（Android 8.0）
 - 條碼產生／辨識：ZXing、zxing-android-embedded
-- 推送 `v*` tag 會由 GitHub Actions 編譯、簽章並自動發布 Release
+- 推送到 `main` 時，GitHub Actions 會編譯、簽章並發布 Release（版本號在 `version.txt`，要出新版就改這個檔）
 
 ```bash
 ./gradlew assembleRelease

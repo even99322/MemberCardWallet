@@ -56,10 +56,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.MemberCard
+import com.even.membercards.data.Updater
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ListScreen(repo: CardRepository, onOpen: (String) -> Unit, onAdd: () -> Unit) {
+fun ListScreen(
+    repo: CardRepository,
+    onOpen: (String) -> Unit,
+    onAdd: () -> Unit,
+    onCheckUpdate: () -> Unit,
+) {
     val context = LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
     var menuOpen by remember { mutableStateOf(false) }
@@ -116,6 +122,13 @@ fun ListScreen(repo: CardRepository, onOpen: (String) -> Unit, onAdd: () -> Unit
                                 onClick = {
                                     menuOpen = false
                                     importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("檢查更新（目前 v${Updater.currentVersion(context)}）") },
+                                onClick = {
+                                    menuOpen = false
+                                    onCheckUpdate()
                                 },
                             )
                         }

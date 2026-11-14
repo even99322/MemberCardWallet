@@ -11,14 +11,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.IntentCompat
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.Shortcuts
+import com.even.membercards.data.Updater
 import com.even.membercards.ui.AppTheme
 import com.even.membercards.ui.DetailScreen
 import com.even.membercards.ui.EditScreen
 import com.even.membercards.ui.ListScreen
+import com.even.membercards.ui.UpdateDialog
+import com.even.membercards.ui.toast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed interface Screen {
     data object Home : Screen
@@ -105,6 +115,38 @@ fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit
         onIncomingHandled()
     }
 
+    // 自動檢查更新（啟動時一次），選單也可手動檢查
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var update by remember { mutableStateOf<Updater.Release?>(null) }
+    fun checkUpdate(manual: Boolean) {
+        scope.launch {
+            val current = Updater.currentVersion(context)
+            val latest = withContext(Dispatchers.IO) { runCatching { Updater.fetchLatest() }.getOrNull() }
+            if (latest == null) {
+                if (manual) context.toast("無法檢查更新，請確認網路連線")
+                return@launch
+            }
+            val newer = Updater.isNewer(latest.version, current)
+            if (newer && (manual || Updater.skippedVersion(context) != latest.version)) {
+                update = latest
+            } else if (manual) {
+                context.toast("已是最新版本 v$current")
+            }
+        }
+    }
+    LaunchedEffect(Unit) { checkUpdate(manual = false) }
+    update?.let { r ->
+        UpdateDialog(
+            release = r,
+            onSkip = {
+                Updater.skip(context, r.version)
+                update = null
+            },
+            onDismiss = { update = null },
+        )
+    }
+
     BackHandler(enabled = stack.size > 1) { pop() }
 
     when (val current = stack.last()) {
@@ -112,6 +154,7 @@ fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit
             repo = repo,
             onOpen = { stack.add(Screen.Detail(it)) },
             onAdd = { stack.add(Screen.Edit(null)) },
+            onCheckUpdate = { checkUpdate(manual = true) },
         )
 
         is Screen.Detail -> DetailScreen(

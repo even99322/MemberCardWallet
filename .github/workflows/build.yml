@@ -58,6 +58,9 @@ jobs:
           name: MemberCardWallet-${{ env.VERSION_NAME }}
           path: out/*.apk
 
+      - name: Release notes
+        run: git log -1 --format=%B | grep -v -E '^(Co-Authored-By|Claude-Session):' > notes.md
+
       # 推到 main 或推 tag 都會發布 Release；tag 名稱為 v<version.txt>，同版本再推會更新 APK
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -66,5 +69,5 @@ jobs:
           name: 會員卡夾 v${{ env.VERSION_NAME }}
           target_commitish: ${{ github.sha }}
           files: out/*.apk
-          generate_release_notes: true
+          body_path: notes.md
           make_latest: true

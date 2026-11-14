@@ -22,6 +22,9 @@ class CardRepository private constructor(private val context: Context) {
 
     val cards = mutableStateListOf<MemberCard>()
 
+    /** 資料夾（依使用者排列的順序） */
+    val folders = mutableStateListOf<String>()
+
     init {
         load()
     }
@@ -29,20 +32,43 @@ class CardRepository private constructor(private val context: Context) {
     private fun load() {
         if (!file.exists()) return
         runCatching {
-            val arr = JSONArray(file.readText())
+            val text = file.readText().trim()
+            val arr: JSONArray
+            val folderArr: JSONArray?
+            if (text.startsWith("[")) {
+                arr = JSONArray(text) // 舊版格式：只有卡片陣列
+                folderArr = null
+            } else {
+                val o = JSONObject(text)
+                arr = o.optJSONArray("cards") ?: JSONArray()
+                folderArr = o.optJSONArray("folders")
+            }
             val loaded = (0 until arr.length()).map { MemberCard.fromJson(arr.getJSONObject(it)) }
             cards.clear()
             cards.addAll(loaded)
+            folders.clear()
+            if (folderArr != null) {
+                for (i in 0 until folderArr.length()) {
+                    val f = folderArr.optString(i).trim()
+                    if (f.isNotEmpty() && f !in folders) folders.add(f)
+                }
+            }
+            loaded.map { it.folder }.filter { it.isNotBlank() && it !in folders }.distinct().forEach { folders.add(it) }
         }
     }
 
     private fun save() {
         val arr = JSONArray()
         cards.forEach { arr.put(it.toJson()) }
+        val content = JSONObject()
+            .put("version", 2)
+            .put("cards", arr)
+            .put("folders", JSONArray(folders.toList()))
+            .toString()
         val tmp = File(file.parentFile, "cards.json.tmp")
-        tmp.writeText(arr.toString())
+        tmp.writeText(content)
         if (!tmp.renameTo(file)) {
-            file.writeText(arr.toString())
+            file.writeText(content)
             tmp.delete()
         }
         Shortcuts.updateDynamic(context, cards.toList())
@@ -51,6 +77,7 @@ class CardRepository private constructor(private val context: Context) {
     fun get(id: String): MemberCard? = cards.firstOrNull { it.id == id }
 
     fun upsert(card: MemberCard) {
+        if (card.folder.isNotBlank() && card.folder !in folders) folders.add(card.folder)
         val i = cards.indexOfFirst { it.id == card.id }
         if (i >= 0) cards[i] = card else cards.add(card)
         save()
@@ -61,6 +88,54 @@ class CardRepository private constructor(private val context: Context) {
         cards.removeAll { it.id == id }
         save()
         Shortcuts.remove(context, id)
+    }
+
+    fun addAll(newCards: List<MemberCard>) {
+        newCards.forEach { if (it.folder.isNotBlank() && it.folder !in folders) folders.add(it.folder) }
+        cards.addAll(newCards)
+        save()
+    }
+
+    // ---------- 資料夾 ----------
+
+    /** 回傳 false 代表名稱空白或已存在。 */
+    fun addFolder(name: String): Boolean {
+        val n = name.trim()
+        if (n.isEmpty() || n in folders) return false
+        folders.add(n)
+        save()
+        return true
+    }
+
+    fun renameFolder(old: String, new: String): Boolean {
+        val n = new.trim()
+        val idx = folders.indexOf(old)
+        if (idx < 0 || n.isEmpty() || (n != old && n in folders)) return false
+        folders[idx] = n
+        for (i in cards.indices) if (cards[i].folder == old) cards[i] = cards[i].copy(folder = n)
+        save()
+        return true
+    }
+
+    /** 刪除資料夾，裡面的卡片改為未分類（不會刪卡片）。 */
+    fun deleteFolder(name: String) {
+        folders.remove(name)
+        for (i in cards.indices) if (cards[i].folder == name) cards[i] = cards[i].copy(folder = "")
+        save()
+    }
+
+    fun moveFolder(name: String, delta: Int) {
+        val i = folders.indexOf(name)
+        val j = i + delta
+        if (i < 0 || j !in folders.indices) return
+        folders.removeAt(i)
+        folders.add(j, name)
+        save()
+    }
+
+    fun moveCard(id: String, folder: String) {
+        val c = get(id) ?: return
+        upsert(c.copy(folder = folder))
     }
 
     fun markUsed(id: String) {
@@ -76,19 +151,33 @@ class CardRepository private constructor(private val context: Context) {
             .put("version", 1)
             .put("exportedAt", System.currentTimeMillis())
             .put("cards", arr)
+            .put("folders", JSONArray(folders.toList()))
             .toString(2)
     }
 
     /** 匯入備份（同 id 會覆蓋，其餘新增），回傳匯入張數。 */
     fun importJson(text: String): Int {
         val trimmed = text.trim()
-        val arr = if (trimmed.startsWith("[")) JSONArray(trimmed) else JSONObject(trimmed).getJSONArray("cards")
+        val arr: JSONArray
+        if (trimmed.startsWith("[")) {
+            arr = JSONArray(trimmed)
+        } else {
+            val o = JSONObject(trimmed)
+            arr = o.getJSONArray("cards")
+            o.optJSONArray("folders")?.let { fa ->
+                for (i in 0 until fa.length()) {
+                    val f = fa.optString(i).trim()
+                    if (f.isNotEmpty() && f !in folders) folders.add(f)
+                }
+            }
+        }
         var n = 0
         for (i in 0 until arr.length()) {
             val c = MemberCard.fromJson(arr.getJSONObject(i))
             if (c.name.isBlank() && c.number.isBlank()) continue
             val idx = cards.indexOfFirst { it.id == c.id }
             if (idx >= 0) cards[idx] = c else cards.add(c)
+            if (c.folder.isNotBlank() && c.folder !in folders) folders.add(c.folder)
             n++
         }
         save()

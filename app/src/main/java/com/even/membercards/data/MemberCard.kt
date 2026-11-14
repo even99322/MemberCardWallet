@@ -19,6 +19,8 @@ data class MemberCard(
     val appLabel: String = "",
     /** 自訂開啟連結（網址或 App 深層連結，可空） */
     val link: String = "",
+    /** 所屬資料夾名稱，空字串 = 未分類 */
+    val folder: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -34,6 +36,7 @@ data class MemberCard(
         put("appPackage", appPackage)
         put("appLabel", appLabel)
         put("link", link)
+        put("folder", folder)
     }
 
     companion object {
@@ -51,6 +54,7 @@ data class MemberCard(
             appPackage = o.optString("appPackage"),
             appLabel = o.optString("appLabel"),
             link = o.optString("link"),
+            folder = o.optString("folder"),
         )
     }
 }

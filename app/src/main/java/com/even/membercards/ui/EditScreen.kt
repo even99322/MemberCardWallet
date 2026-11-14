@@ -82,6 +82,7 @@ fun EditScreen(
     sharedImage: Uri? = null,
     sharedText: String? = null,
     sharedSubject: String? = null,
+    defaultFolder: String = "",
     onBack: () -> Unit,
     onSaved: (String) -> Unit,
 ) {
@@ -98,6 +99,9 @@ fun EditScreen(
     var appLabel by rememberSaveable { mutableStateOf(existing?.appLabel ?: "") }
     var link by rememberSaveable { mutableStateOf(existing?.link ?: "") }
     var showAppPicker by remember { mutableStateOf(false) }
+    var folder by rememberSaveable { mutableStateOf(existing?.folder ?: defaultFolder) }
+    var folderMenu by remember { mutableStateOf(false) }
+    var creatingFolder by remember { mutableStateOf(false) }
     var formatMenu by remember { mutableStateOf(false) }
     var decoding by remember { mutableStateOf(false) }
 
@@ -172,6 +176,7 @@ fun EditScreen(
                     appPackage = appPackage,
                     appLabel = appLabel,
                     link = link.trim(),
+                    folder = folder,
                 )
                 repo.upsert(card)
                 onSaved(card.id)
@@ -309,6 +314,36 @@ fun EditScreen(
                 }
             }
 
+            Text("資料夾", style = MaterialTheme.typography.titleSmall)
+            Box {
+                OutlinedButton(
+                    onClick = { folderMenu = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    Text(folder.ifBlank { "未分類" }, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.ArrowDropDown, null)
+                }
+                DropdownMenu(expanded = folderMenu, onDismissRequest = { folderMenu = false }) {
+                    (listOf("") + repo.folders).forEach { f ->
+                        DropdownMenuItem(
+                            text = { Text(f.ifBlank { "未分類" }) },
+                            onClick = {
+                                folder = f
+                                folderMenu = false
+                            },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("＋ 新增資料夾") },
+                        onClick = {
+                            folderMenu = false
+                            creatingFolder = true
+                        },
+                    )
+                }
+            }
+
             Text("卡片顏色", style = MaterialTheme.typography.titleSmall)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(Palette.colors) { c ->
@@ -374,6 +409,21 @@ fun EditScreen(
             ) { Text("儲存") }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (creatingFolder) {
+        FolderNameDialog(
+            title = "新增資料夾",
+            onConfirm = { n ->
+                repo.addFolder(n).also { ok ->
+                    if (ok) {
+                        folder = n
+                        creatingFolder = false
+                    }
+                }
+            },
+            onDismiss = { creatingFolder = false },
+        )
     }
 
     if (showAppPicker) {

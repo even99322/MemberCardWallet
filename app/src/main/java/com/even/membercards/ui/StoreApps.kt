@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -27,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -161,5 +163,103 @@ fun AppPickerDialog(storeName: String, onPick: (InstalledApp) -> Unit, onDismiss
                 }
             }
         },
+    )
+}
+
+/** 一次勾選多個會員 App，綁定成卡片。已綁定的 App 會標示出來。 */
+@Composable
+fun BindAppsDialog(
+    boundPackages: Set<String>,
+    onConfirm: (List<InstalledApp>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var apps by remember { mutableStateOf<List<InstalledApp>?>(null) }
+    var query by remember { mutableStateOf("") }
+    val selected = remember { mutableStateListOf<String>() }
+
+    LaunchedEffect(Unit) {
+        apps = withContext(Dispatchers.IO) { runCatching { StoreApps.load(context) }.getOrDefault(emptyList()) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("綁定會員 App") },
+        text = {
+            Column {
+                Text(
+                    "勾選你的會員 App，綁定後點卡片就會直接開啟該 App 出示條碼。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("搜尋 App") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                val list = apps
+                if (list == null) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { CircularProgressIndicator() }
+                } else {
+                    val shown = list.filter {
+                        query.isBlank() || it.label.contains(query, true) || it.pkg.contains(query, true)
+                    }
+                    LazyColumn(Modifier.heightIn(max = 400.dp)) {
+                        items(shown, key = { it.pkg }) { app ->
+                            val bound = app.pkg in boundPackages
+                            val checked = app.pkg in selected
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !bound) {
+                                        if (checked) selected.remove(app.pkg) else selected.add(app.pkg)
+                                    }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = checked || bound,
+                                    enabled = !bound,
+                                    onCheckedChange = {
+                                        if (checked) selected.remove(app.pkg) else selected.add(app.pkg)
+                                    },
+                                )
+                                Image(app.icon, null, Modifier.size(32.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    if (bound) {
+                                        Text(
+                                            "已綁定",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = selected.isNotEmpty(),
+                onClick = {
+                    val all = apps.orEmpty()
+                    onConfirm(selected.mapNotNull { pkg -> all.firstOrNull { it.pkg == pkg } })
+                },
+            ) { Text(if (selected.isEmpty()) "綁定" else "綁定 ${selected.size} 個") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

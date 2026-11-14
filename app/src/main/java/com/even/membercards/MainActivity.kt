@@ -24,6 +24,7 @@ import com.even.membercards.ui.AppTheme
 import com.even.membercards.ui.DetailScreen
 import com.even.membercards.ui.EditScreen
 import com.even.membercards.ui.ListScreen
+import com.even.membercards.ui.StoreApps
 import com.even.membercards.ui.UpdateDialog
 import com.even.membercards.ui.toast
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,7 @@ sealed interface Screen {
         val sharedImage: Uri? = null,
         val sharedText: String? = null,
         val sharedSubject: String? = null,
+        val folder: String = "",
     ) : Screen
 }
 
@@ -93,6 +95,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit) {
     val stack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     fun pop() {
         if (stack.size > 1) stack.removeAt(stack.lastIndex)
     }
@@ -100,10 +104,18 @@ fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit
     LaunchedEffect(incoming) {
         when (incoming) {
             null -> return@LaunchedEffect
-            is Incoming.OpenCard -> if (repo.get(incoming.id) != null) {
-                stack.clear()
-                stack.add(Screen.Home)
-                stack.add(Screen.Detail(incoming.id))
+            is Incoming.OpenCard -> {
+                val card = repo.get(incoming.id)
+                val appOnly = card != null && card.number.isBlank() &&
+                    (card.appPackage.isNotBlank() || card.link.isNotBlank())
+                if (card != null && appOnly && StoreApps.open(context, card)) {
+                    // 只綁定 App 的卡：捷徑直接開啟會員 App
+                    repo.markUsed(card.id)
+                } else if (card != null) {
+                    stack.clear()
+                    stack.add(Screen.Home)
+                    stack.add(Screen.Detail(incoming.id))
+                }
             }
 
             is Incoming.Shared -> {
@@ -116,8 +128,6 @@ fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit
     }
 
     // 自動檢查更新（啟動時一次），選單也可手動檢查
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var update by remember { mutableStateOf<Updater.Release?>(null) }
     fun checkUpdate(manual: Boolean) {
         scope.launch {
@@ -152,8 +162,9 @@ fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit
     when (val current = stack.last()) {
         Screen.Home -> ListScreen(
             repo = repo,
-            onOpen = { stack.add(Screen.Detail(it)) },
-            onAdd = { stack.add(Screen.Edit(null)) },
+            onOpenDetail = { stack.add(Screen.Detail(it)) },
+            onEdit = { stack.add(Screen.Edit(it)) },
+            onAdd = { folder -> stack.add(Screen.Edit(null, folder = folder)) },
             onCheckUpdate = { checkUpdate(manual = true) },
         )
 
@@ -170,6 +181,7 @@ fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit
             sharedImage = current.sharedImage,
             sharedText = current.sharedText,
             sharedSubject = current.sharedSubject,
+            defaultFolder = current.folder,
             onBack = { pop() },
             onSaved = { savedId ->
                 pop()

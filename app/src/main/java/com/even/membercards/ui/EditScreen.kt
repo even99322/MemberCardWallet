@@ -1,5 +1,6 @@
 package com.even.membercards.ui
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -47,6 +49,7 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +79,9 @@ import kotlinx.coroutines.withContext
 fun EditScreen(
     repo: CardRepository,
     cardId: String?,
+    sharedImage: Uri? = null,
+    sharedText: String? = null,
+    sharedSubject: String? = null,
     onBack: () -> Unit,
     onSaved: (String) -> Unit,
 ) {
@@ -83,11 +89,15 @@ fun EditScreen(
     val scope = rememberCoroutineScope()
     val existing = remember(cardId) { cardId?.let { repo.get(it) } }
 
-    var name by rememberSaveable { mutableStateOf(existing?.name ?: "") }
+    var name by rememberSaveable { mutableStateOf(existing?.name ?: sharedSubject?.take(30) ?: "") }
     var number by rememberSaveable { mutableStateOf(existing?.number ?: "") }
     var format by rememberSaveable { mutableStateOf(existing?.format ?: "CODE_128") }
     var color by rememberSaveable { mutableStateOf(existing?.color ?: Palette.colors[0]) }
     var note by rememberSaveable { mutableStateOf(existing?.note ?: "") }
+    var appPackage by rememberSaveable { mutableStateOf(existing?.appPackage ?: "") }
+    var appLabel by rememberSaveable { mutableStateOf(existing?.appLabel ?: "") }
+    var link by rememberSaveable { mutableStateOf(existing?.link ?: "") }
+    var showAppPicker by remember { mutableStateOf(false) }
     var formatMenu by remember { mutableStateOf(false) }
     var decoding by remember { mutableStateOf(false) }
 
@@ -100,21 +110,38 @@ fun EditScreen(
         }
     }
 
+    fun decodeImage(uri: Uri) {
+        decoding = true
+        scope.launch {
+            val res = withContext(Dispatchers.Default) {
+                runCatching { Barcodes.decodeFromUri(context, uri) }.getOrNull()
+            }
+            decoding = false
+            if (res != null) {
+                number = res.first
+                format = Barcodes.fromScanned(res.second)
+                context.toast("已辨識：${Barcodes.find(format).label}")
+            } else {
+                context.toast("圖片中找不到條碼，可試著裁切到只剩條碼再選一次")
+            }
+        }
+    }
+
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            decoding = true
-            scope.launch {
-                val res = withContext(Dispatchers.Default) {
-                    runCatching { Barcodes.decodeFromUri(context, uri) }.getOrNull()
-                }
-                decoding = false
-                if (res != null) {
-                    number = res.first
-                    format = Barcodes.fromScanned(res.second)
-                    context.toast("已辨識：${Barcodes.find(format).label}")
-                } else {
-                    context.toast("圖片中找不到條碼，可試著裁切到只剩條碼再選一次")
-                }
+        if (uri != null) decodeImage(uri)
+    }
+
+    // 其他 App 分享進來的截圖或文字
+    LaunchedEffect(Unit) {
+        if (existing != null) return@LaunchedEffect
+        if (sharedImage != null) decodeImage(sharedImage)
+        if (sharedText != null) {
+            val t = sharedText.trim()
+            if (Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://\\S+$").matches(t)) {
+                link = t
+                context.toast("已帶入開啟連結")
+            } else {
+                number = extractCode(t)
             }
         }
     }
@@ -131,7 +158,8 @@ fun EditScreen(
     fun save() {
         when {
             name.isBlank() -> context.toast("請輸入店家名稱")
-            trimmed.isEmpty() -> context.toast("請輸入或掃描會員號碼")
+            trimmed.isEmpty() && appPackage.isBlank() && link.isBlank() ->
+                context.toast("請輸入會員號碼，或連結店家 App")
             error != null -> context.toast(error)
             else -> {
                 val base = existing ?: MemberCard(name = name.trim(), number = trimmed)
@@ -141,6 +169,9 @@ fun EditScreen(
                     format = format,
                     color = color,
                     note = note.trim(),
+                    appPackage = appPackage,
+                    appLabel = appLabel,
+                    link = link.trim(),
                 )
                 repo.upsert(card)
                 onSaved(card.id)
@@ -299,6 +330,34 @@ fun EditScreen(
                 }
             }
 
+            // 3. 連結店家 App
+            Text("店家 App（選填）", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "連結後在卡片頁可一鍵開啟。像 OPENPOINT、PX Pay 這類會變動的動態條碼無法儲存，可以只連結 App、號碼留空。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = { showAppPicker = true },
+                    modifier = Modifier.weight(1f),
+                ) { Text(if (appPackage.isBlank()) "選擇店家 App" else "已連結：$appLabel") }
+                if (appPackage.isNotBlank()) {
+                    IconButton(onClick = {
+                        appPackage = ""
+                        appLabel = ""
+                    }) { Icon(Icons.Filled.Close, "取消連結") }
+                }
+            }
+            OutlinedTextField(
+                value = link,
+                onValueChange = { link = it },
+                label = { Text("自訂開啟連結（進階，選填）") },
+                placeholder = { Text("網址或 App 深層連結") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
@@ -316,4 +375,27 @@ fun EditScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+
+    if (showAppPicker) {
+        AppPickerDialog(
+            storeName = name,
+            onPick = {
+                appPackage = it.pkg
+                appLabel = it.label
+                if (name.isBlank()) name = it.label
+                showAppPicker = false
+            },
+            onDismiss = { showAppPicker = false },
+        )
+    }
+}
+
+/** 從分享的文字中找出最像會員號碼的字串。 */
+private fun extractCode(text: String): String {
+    if (text.length <= 48 && !text.any { it.isWhitespace() }) return text
+    val tokens = Regex("[A-Za-z0-9/+.\\-]{6,}").findAll(text)
+        .map { it.value }
+        .filterNot { it.startsWith("http", ignoreCase = true) }
+        .toList()
+    return tokens.maxByOrNull { t -> t.count { it.isDigit() } } ?: text.take(64)
 }

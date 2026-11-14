@@ -24,7 +24,10 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.even.membercards.data.Barcodes
 import com.even.membercards.data.CardRepository
+import com.even.membercards.data.Shortcuts
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +94,9 @@ fun DetailScreen(repo: CardRepository, id: String, onBack: () -> Unit, onEdit: (
                             if (card.favorite) "取消常用" else "設為常用",
                         )
                     }
+                    IconButton(onClick = {
+                        if (!Shortcuts.requestPin(context, card)) context.toast("你的桌面不支援新增捷徑")
+                    }) { Icon(Icons.Filled.Home, "加到主畫面") }
                     IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, "編輯") }
                     IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, "刪除") }
                 },
@@ -110,7 +117,8 @@ fun DetailScreen(repo: CardRepository, id: String, onBack: () -> Unit, onEdit: (
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(
+            val hasApp = card.appPackage.isNotBlank() || card.link.isNotBlank()
+            if (card.number.isNotBlank()) Column(
                 Modifier
                     .fillMaxWidth()
                     .background(Color.White, RoundedCornerShape(20.dp))
@@ -151,6 +159,37 @@ fun DetailScreen(repo: CardRepository, id: String, onBack: () -> Unit, onEdit: (
                 )
                 Spacer(Modifier.height(6.dp))
                 Text("點號碼可複製 · ${fmt.label}", fontSize = 12.sp, color = Color.Gray)
+            } else {
+                Text(
+                    "這張卡沒有存條碼，請開啟店家 App 出示。",
+                    color = fg,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                )
+            }
+
+            if (hasApp) {
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = {
+                        if (!StoreApps.open(context, card)) context.toast("尚未設定店家 App")
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color(0xFF1B1B1F),
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                ) {
+                    Text(
+                        "開啟 ${card.appLabel.ifBlank { "店家 App" }}",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                    )
+                }
             }
 
             if (card.note.isNotBlank()) {

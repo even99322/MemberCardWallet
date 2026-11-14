@@ -7,8 +7,18 @@ import org.json.JSONObject
 import java.io.File
 
 /** 以 JSON 檔存在 App 私有空間；所有操作都在主執行緒呼叫。 */
-class CardRepository(context: Context) {
+class CardRepository private constructor(private val context: Context) {
     private val file = File(context.filesDir, "cards.json")
+
+    companion object {
+        @Volatile
+        private var INSTANCE: CardRepository? = null
+
+        fun instance(context: Context): CardRepository =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: CardRepository(context.applicationContext).also { INSTANCE = it }
+            }
+    }
 
     val cards = mutableStateListOf<MemberCard>()
 
@@ -35,6 +45,7 @@ class CardRepository(context: Context) {
             file.writeText(arr.toString())
             tmp.delete()
         }
+        Shortcuts.updateDynamic(context, cards.toList())
     }
 
     fun get(id: String): MemberCard? = cards.firstOrNull { it.id == id }
@@ -43,11 +54,13 @@ class CardRepository(context: Context) {
         val i = cards.indexOfFirst { it.id == card.id }
         if (i >= 0) cards[i] = card else cards.add(card)
         save()
+        Shortcuts.update(context, card)
     }
 
     fun delete(id: String) {
         cards.removeAll { it.id == id }
         save()
+        Shortcuts.remove(context, id)
     }
 
     fun markUsed(id: String) {

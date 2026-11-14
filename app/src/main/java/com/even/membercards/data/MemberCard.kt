@@ -14,6 +14,11 @@ data class MemberCard(
     val lastUsed: Long = 0L,
     val useCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
+    /** 連結的店家 App 套件名稱（可空） */
+    val appPackage: String = "",
+    val appLabel: String = "",
+    /** 自訂開啟連結（網址或 App 深層連結，可空） */
+    val link: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -26,6 +31,9 @@ data class MemberCard(
         put("lastUsed", lastUsed)
         put("useCount", useCount)
         put("createdAt", createdAt)
+        put("appPackage", appPackage)
+        put("appLabel", appLabel)
+        put("link", link)
     }
 
     companion object {
@@ -40,6 +48,9 @@ data class MemberCard(
             lastUsed = o.optLong("lastUsed", 0L),
             useCount = o.optInt("useCount", 0),
             createdAt = o.optLong("createdAt", System.currentTimeMillis()),
+            appPackage = o.optString("appPackage"),
+            appLabel = o.optString("appLabel"),
+            link = o.optString("link"),
         )
     }
 }

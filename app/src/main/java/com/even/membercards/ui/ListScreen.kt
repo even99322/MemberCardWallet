@@ -2,7 +2,8 @@ package com.even.membercards.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -169,7 +170,13 @@ fun ListScreen(repo: CardRepository, onOpen: (String) -> Unit, onAdd: () -> Unit
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(shown, key = { it.id }) { card ->
-                        CardTile(card) { onOpen(card.id) }
+                        CardTile(
+                            card = card,
+                            onClick = { onOpen(card.id) },
+                            onLongClick = {
+                                if (!StoreApps.open(context, card)) context.toast("長按可開啟店家 App，請先在編輯中連結")
+                            },
+                        )
                     }
                 }
             }
@@ -177,8 +184,9 @@ fun ListScreen(repo: CardRepository, onOpen: (String) -> Unit, onAdd: () -> Unit
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CardTile(card: MemberCard, onClick: () -> Unit) {
+private fun CardTile(card: MemberCard, onClick: () -> Unit, onLongClick: () -> Unit) {
     val bg = Color(card.color)
     val fg = onColor(bg)
     Surface(
@@ -189,7 +197,7 @@ private fun CardTile(card: MemberCard, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1.586f)
-            .clickable(onClick = onClick),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.Top) {
@@ -207,7 +215,7 @@ private fun CardTile(card: MemberCard, onClick: () -> Unit) {
             }
             Spacer(Modifier.weight(1f))
             Text(
-                maskNumber(card.number),
+                if (card.number.isBlank()) "App：${card.appLabel.ifBlank { "連結" }}" else maskNumber(card.number),
                 fontFamily = FontFamily.Monospace,
                 fontSize = 13.sp,
                 maxLines = 1,

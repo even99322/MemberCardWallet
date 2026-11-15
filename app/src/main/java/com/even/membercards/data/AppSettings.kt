@@ -23,6 +23,33 @@ class AppSettings private constructor(context: Context) {
     private val phonesState = mutableStateOf(loadPhones())
     private val payState = mutableStateOf(parseApps(prefs.getString(K_PAY, null)))
     private val quickCollapsedState = mutableStateOf(prefs.getBoolean(K_QUICK_COLLAPSED, false))
+    private val autoRecordState = mutableStateOf(prefs.getBoolean(K_AUTO_RECORD, true))
+    private val captureOtherState = mutableStateOf(prefs.getBoolean(K_CAPTURE_OTHER, false))
+    private val budgetState = mutableStateOf(prefs.getLong(K_BUDGET, 0L))
+
+    /** 讀取 LINE Pay 付款通知自動記帳（還需要系統的通知存取權） */
+    var autoRecord: Boolean
+        get() = autoRecordState.value
+        set(v) {
+            autoRecordState.value = v
+            prefs.edit().putBoolean(K_AUTO_RECORD, v).apply()
+        }
+
+    /** 也擷取快捷列上其他付款 App 的通知 */
+    var captureOtherPay: Boolean
+        get() = captureOtherState.value
+        set(v) {
+            captureOtherState.value = v
+            prefs.edit().putBoolean(K_CAPTURE_OTHER, v).apply()
+        }
+
+    /** 每月預算（0 = 未設定） */
+    var monthlyBudget: Long
+        get() = budgetState.value
+        set(v) {
+            budgetState.value = v
+            prefs.edit().putLong(K_BUDGET, v).apply()
+        }
 
     /** 手機條碼載具（例如 /ABC1234），空字串 = 未設定 */
     var carrier: String
@@ -66,12 +93,14 @@ class AppSettings private constructor(context: Context) {
 
     /** 匯出備份用 */
     fun quickJson(): JSONObject = JSONObject()
+        .put("budget", monthlyBudget)
         .put("carrier", carrier)
         .put("phone", phones.firstOrNull()?.number ?: "")
         .put("phones", phonesToJson(phones))
         .put("payApps", appsToJson(payApps))
 
     fun applyQuickJson(o: JSONObject) {
+        o.optLong("budget", 0L).takeIf { it > 0 }?.let { monthlyBudget = it }
         o.optString("carrier").takeIf { it.isNotBlank() }?.let { carrier = it }
         val arr = o.optJSONArray("phones")
         if (arr != null) {
@@ -140,6 +169,9 @@ class AppSettings private constructor(context: Context) {
         private const val K_CARRIER = "carrier"
         private const val K_PHONE = "phone"
         private const val K_PHONES = "phones"
+        private const val K_AUTO_RECORD = "auto_record"
+        private const val K_CAPTURE_OTHER = "capture_other_pay"
+        private const val K_BUDGET = "monthly_budget"
 
         private fun phonesToJson(list: List<PhoneEntry>): JSONArray {
             val arr = JSONArray()

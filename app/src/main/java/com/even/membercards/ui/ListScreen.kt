@@ -85,6 +85,7 @@ fun ListScreen(
     onAdd: (folder: String) -> Unit,
     onOpenSettings: () -> Unit,
     onQuickSetup: () -> Unit,
+    onOpenLedger: () -> Unit,
 ) {
     val context = LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -240,6 +241,7 @@ fun ListScreen(
                         onSetup = onQuickSetup,
                         onShowCarrier = { showCarrier = it },
                         onShowPhones = { showPhones = true },
+                        onOpenLedger = onOpenLedger,
                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
                     )
                 }

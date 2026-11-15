@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.sp
 import com.even.membercards.data.AppSettings
 import com.even.membercards.data.Barcodes
 import com.even.membercards.data.CardRepository
+import com.even.membercards.data.LedgerRepository
+import com.even.membercards.data.formatMoney
 
 /** 載具號碼：優先用設定值，沒有就從卡片中找「手機條碼載具」。 */
 fun effectiveCarrier(settings: AppSettings, repo: CardRepository): String {
@@ -66,6 +68,7 @@ fun QuickBar(
     onSetup: () -> Unit,
     onShowCarrier: (String) -> Unit,
     onShowPhones: () -> Unit,
+    onOpenLedger: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -73,6 +76,9 @@ fun QuickBar(
     val phones = settings.phones
     val phone = phones.firstOrNull()?.number ?: ""
     val collapsed = settings.quickCollapsed
+    val ledger = remember { LedgerRepository.instance(context) }
+    val monthTotal = ledger.monthTotal()
+    val budget = settings.monthlyBudget
 
     Column(
         modifier
@@ -85,8 +91,38 @@ fun QuickBar(
         // 標題列
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("QUICK ACCESS", style = MonoLabel, color = Hud.Cyan)
-            Text(" // 快速出示", fontSize = 11.sp, color = Hud.TextDim)
             Spacer(Modifier.weight(1f))
+            // 本月支出（點了進記帳）
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .border(
+                        1.dp,
+                        (if (budget > 0 && monthTotal > budget) Hud.Danger else Hud.LineBright).copy(alpha = 0.7f),
+                        RoundedCornerShape(6.dp),
+                    )
+                    .clickable(onClick = onOpenLedger)
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("本月 ", fontSize = 11.sp, color = Hud.TextDim)
+                Text(
+                    formatMoney(monthTotal),
+                    fontFamily = Mono,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = if (budget > 0 && monthTotal > budget) Hud.Danger else Hud.Text,
+                )
+                if (budget > 0) {
+                    Text(
+                        " /${Math.round(monthTotal * 100 / budget)}%",
+                        style = MonoLabel,
+                        color = Hud.TextDim,
+                    )
+                }
+                Text("  記帳 ›", fontSize = 11.sp, color = Hud.Cyan)
+            }
+            Spacer(Modifier.width(2.dp))
             Icon(
                 Icons.Filled.Edit,
                 "設定快捷列",

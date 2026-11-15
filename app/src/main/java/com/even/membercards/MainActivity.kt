@@ -23,6 +23,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.IntentCompat
 import com.even.membercards.data.AppSettings
 import com.even.membercards.data.CardRepository
+import com.even.membercards.data.LedgerRepository
+import com.even.membercards.ui.AutoRecordScreen
+import com.even.membercards.ui.LedgerEditScreen
+import com.even.membercards.ui.LedgerScreen
 import com.even.membercards.data.Shortcuts
 import com.even.membercards.data.Updater
 import com.even.membercards.ui.AppTheme
@@ -44,6 +48,14 @@ sealed interface Screen {
     data object Home : Screen
     data object Settings : Screen
     data object QuickSetup : Screen
+    data object Ledger : Screen
+    data object AutoRecord : Screen
+    data class LedgerEdit(
+        val id: String?,
+        val amount: Double? = null,
+        val merchant: String = "",
+        val method: String = "",
+    ) : Screen
     data class Detail(val id: String) : Screen
     data class Edit(
         val id: String?,
@@ -215,7 +227,37 @@ fun App(
             onAdd = { folder -> stack.add(Screen.Edit(null, folder = folder)) },
             onOpenSettings = { stack.add(Screen.Settings) },
             onQuickSetup = { stack.add(Screen.QuickSetup) },
+            onOpenLedger = { stack.add(Screen.Ledger) },
             settings = settings,
+        )
+
+        Screen.Ledger -> LedgerScreen(
+            ledger = LedgerRepository.instance(context),
+            settings = settings,
+            onBack = { pop() },
+            onAdd = { stack.add(Screen.LedgerEdit(null)) },
+            onEdit = { stack.add(Screen.LedgerEdit(it)) },
+            onAutoSetup = { stack.add(Screen.AutoRecord) },
+        )
+
+        Screen.AutoRecord -> AutoRecordScreen(
+            ledger = LedgerRepository.instance(context),
+            settings = settings,
+            onBack = { pop() },
+            onRecordFrom = { amount, merchant, method ->
+                stack.add(Screen.LedgerEdit(null, amount, merchant, method))
+            },
+        )
+
+        is Screen.LedgerEdit -> LedgerEditScreen(
+            ledger = LedgerRepository.instance(context),
+            repo = repo,
+            settings = settings,
+            entryId = current.id,
+            prefillAmount = current.amount,
+            prefillMerchant = current.merchant,
+            prefillMethod = current.method,
+            onBack = { pop() },
         )
 
         Screen.QuickSetup -> QuickSetupScreen(
@@ -229,6 +271,8 @@ fun App(
             settings = settings,
             onBack = { pop() },
             onQuickSetup = { stack.add(Screen.QuickSetup) },
+            onOpenLedger = { stack.add(Screen.Ledger) },
+            onAutoRecord = { stack.add(Screen.AutoRecord) },
             onCheckUpdate = { checkUpdate(manual = true) },
         )
 

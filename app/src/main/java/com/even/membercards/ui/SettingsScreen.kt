@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.even.membercards.data.AppSettings
 import com.even.membercards.data.CardRepository
+import com.even.membercards.data.LedgerRepository
 import com.even.membercards.data.Updater
 import org.json.JSONObject
 
@@ -54,6 +55,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onCheckUpdate: () -> Unit,
     onQuickSetup: () -> Unit,
+    onOpenLedger: () -> Unit,
+    onAutoRecord: () -> Unit,
 ) {
     val context = LocalContext.current
     var showFolders by remember { mutableStateOf(false) }
@@ -65,7 +68,10 @@ fun SettingsScreen(
         if (uri != null) {
             runCatching {
                 // 卡片、資料夾之外，也備份快捷列（載具、手機、付款 App）
-                val json = JSONObject(repo.exportJson()).put("quick", settings.quickJson()).toString(2)
+                val json = JSONObject(repo.exportJson())
+                    .put("quick", settings.quickJson())
+                    .put("ledger", LedgerRepository.instance(context).exportJson())
+                    .toString(2)
                 context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
             }.onSuccess { context.toast("已匯出 ${repo.cards.size} 張會員卡") }
                 .onFailure { context.toast("匯出失敗：${it.message}") }
@@ -76,8 +82,10 @@ fun SettingsScreen(
             runCatching {
                 val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     ?: error("無法讀取檔案")
-                runCatching { JSONObject(text.trim()).optJSONObject("quick") }.getOrNull()
-                    ?.let { settings.applyQuickJson(it) }
+                runCatching { JSONObject(text.trim()) }.getOrNull()?.let { o ->
+                    o.optJSONObject("quick")?.let { settings.applyQuickJson(it) }
+                    o.optJSONArray("ledger")?.let { LedgerRepository.instance(context).importJson(it) }
+                }
                 repo.importJson(text)
             }.onSuccess { context.toast("已匯入 $it 張會員卡") }
                 .onFailure { context.toast("匯入失敗：檔案格式不正確") }
@@ -172,11 +180,19 @@ fun SettingsScreen(
 
                 HudSection("03", "資料")
                 HudPanel {
-                    NavRow("快捷列", "手機條碼載具、手機號碼、常用付款 App") { onQuickSetup() }
+                    NavRow("快捷列", "手機條碼載具、電話號碼、常用付款 App") { onQuickSetup() }
+                    HudDivider()
+                    NavRow("記帳", "本月支出、預算、分類統計、匯出 CSV") { onOpenLedger() }
+                    HudDivider()
+                    NavRow(
+                        "自動記帳",
+                        if (settings.autoRecord && AutoRecord.isPermissionGranted(context)) "LINE Pay 付款通知自動記帳：運作中"
+                        else "讀取 LINE Pay 付款通知自動記帳：未開啟",
+                    ) { onAutoRecord() }
                     HudDivider()
                     NavRow("管理資料夾", "${repo.folders.size} 個資料夾") { showFolders = true }
                     HudDivider()
-                    NavRow("匯出備份", "存成 JSON 檔，換手機時使用") { exportLauncher.launch("member-cards-backup.json") }
+                    NavRow("匯出備份", "卡片、資料夾、快捷列、記帳都會備份成 JSON 檔") { exportLauncher.launch("member-cards-backup.json") }
                     HudDivider()
                     NavRow("匯入備份", "從 JSON 備份檔還原，同一張卡會被覆蓋") {
                         importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))

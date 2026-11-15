@@ -24,6 +24,7 @@ import androidx.core.content.IntentCompat
 import com.even.membercards.data.AppSettings
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.LedgerRepository
+import com.even.membercards.data.MemberCard
 import com.even.membercards.ui.AutoRecordScreen
 import com.even.membercards.ui.LedgerEditScreen
 import com.even.membercards.ui.LedgerScreen
@@ -39,6 +40,7 @@ import com.even.membercards.ui.SettingsScreen
 import androidx.compose.ui.Modifier
 import com.even.membercards.ui.StoreApps
 import com.even.membercards.ui.UpdateDialog
+import com.even.membercards.ui.CardShare
 import com.even.membercards.ui.FullscreenBarcode
 import com.even.membercards.ui.FullscreenPhones
 import com.even.membercards.ui.effectiveCarrier
@@ -68,6 +70,7 @@ sealed interface Screen {
         val sharedText: String? = null,
         val sharedSubject: String? = null,
         val folder: String = "",
+        val kind: String = MemberCard.KIND_CARD,
     ) : Screen
 }
 
@@ -77,6 +80,8 @@ sealed interface Incoming {
     data class Shared(val image: Uri?, val text: String?, val subject: String?) : Incoming
     data object ShowCarrier : Incoming
     data object ShowPhone : Incoming
+    data object AddEntry : Incoming
+    data class ImportCard(val card: MemberCard) : Incoming
 }
 
 class MainActivity : ComponentActivity() {
@@ -93,6 +98,8 @@ class MainActivity : ComponentActivity() {
         )
         val repo = CardRepository.instance(applicationContext)
         settings = AppSettings.instance(applicationContext)
+        Shortcuts.updateDynamic(applicationContext, repo.cards.toList())
+        ReminderWorker.schedule(applicationContext, settings.reminders)
         locked.value = settings.lockEnabled
         if (savedInstanceState == null) incoming.value = parse(intent)
         setContent {
@@ -138,6 +145,7 @@ class MainActivity : ComponentActivity() {
 
             CarrierWidget.ACTION_SHOW_CARRIER -> Incoming.ShowCarrier
             CarrierWidget.ACTION_SHOW_PHONE -> Incoming.ShowPhone
+            Shortcuts.ACTION_ADD_ENTRY -> Incoming.AddEntry
 
             Intent.ACTION_SEND -> {
                 val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
@@ -146,7 +154,9 @@ class MainActivity : ComponentActivity() {
                     uri?.let { Incoming.Shared(it, null, subject) }
                 } else {
                     val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
-                    text?.takeIf { it.isNotBlank() }?.let { Incoming.Shared(null, it, subject) }
+                    val shared = text?.let { CardShare.decode(it) }
+                    if (shared != null) Incoming.ImportCard(shared)
+                    else text?.takeIf { it.isNotBlank() }?.let { Incoming.Shared(null, it, subject) }
                 }
             }
 
@@ -172,6 +182,7 @@ fun App(
 
     var showCarrier by remember { mutableStateOf<String?>(null) }
     var showPhones by remember { mutableStateOf(false) }
+    var importing by remember { mutableStateOf<MemberCard?>(null) }
 
     LaunchedEffect(incoming, locked) {
         if (locked) return@LaunchedEffect // 解鎖後才處理捷徑／分享
@@ -208,6 +219,15 @@ fun App(
                     showCarrier = c
                 }
             }
+
+            Incoming.AddEntry -> {
+                stack.clear()
+                stack.add(Screen.Home)
+                stack.add(Screen.Ledger)
+                stack.add(Screen.LedgerEdit(null))
+            }
+
+            is Incoming.ImportCard -> importing = incoming.card
 
             Incoming.ShowPhone -> {
                 if (settings.phones.isEmpty()) {
@@ -267,6 +287,7 @@ fun App(
             onOpenDetail = { stack.add(Screen.Detail(it)) },
             onEdit = { stack.add(Screen.Edit(it)) },
             onAdd = { folder -> stack.add(Screen.Edit(null, folder = folder)) },
+            onAddCoupon = { stack.add(Screen.Edit(null, kind = MemberCard.KIND_COUPON)) },
             onOpenSettings = { stack.add(Screen.Settings) },
             onQuickSetup = { stack.add(Screen.QuickSetup) },
             onOpenLedger = { stack.add(Screen.Ledger) },
@@ -333,10 +354,37 @@ fun App(
             sharedText = current.sharedText,
             sharedSubject = current.sharedSubject,
             defaultFolder = current.folder,
+            defaultKind = current.kind,
             onBack = { pop() },
             onSaved = { savedId ->
                 pop()
                 if (current.id == null) stack.add(Screen.Detail(savedId))
+            },
+        )
+    }
+
+    // 收到別人分享的卡片
+    importing?.let { c ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { importing = null },
+            title = { androidx.compose.material3.Text(if (c.isCoupon) "匯入票券？" else "匯入會員卡？") },
+            text = {
+                androidx.compose.material3.Text(
+                    "「${c.name}」" + if (c.number.isNotBlank()) "\n號碼：${c.number}" else "",
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    repo.upsert(c)
+                    importing = null
+                    stack.clear()
+                    stack.add(Screen.Home)
+                    stack.add(Screen.Detail(c.id))
+                    context.toast("已匯入「${c.name}」")
+                }) { androidx.compose.material3.Text("匯入") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { importing = null }) { androidx.compose.material3.Text("取消") }
             },
         )
     }

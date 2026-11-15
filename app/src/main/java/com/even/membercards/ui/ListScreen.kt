@@ -55,6 +55,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -77,6 +78,9 @@ import java.util.Locale
 /** 篩選用的特殊值：未分類 */
 private const val UNCATEGORIZED = "\u0001uncategorized"
 
+/** 篩選用的特殊值：票券 */
+private const val COUPONS = "\u0001coupons"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ListScreen(
@@ -85,6 +89,7 @@ fun ListScreen(
     onOpenDetail: (String) -> Unit,
     onEdit: (String) -> Unit,
     onAdd: (folder: String) -> Unit,
+    onAddCoupon: () -> Unit,
     onOpenSettings: () -> Unit,
     onQuickSetup: () -> Unit,
     onOpenLedger: () -> Unit,
@@ -102,10 +107,12 @@ fun ListScreen(
     var showPhones by remember { mutableStateOf(false) }
 
     val sel = selectedFolder
-    if (sel != null && sel != UNCATEGORIZED && sel !in repo.folders) selectedFolder = null
-    val currentFolderName = selectedFolder?.takeIf { it != UNCATEGORIZED } ?: ""
+    if (sel != null && sel != UNCATEGORIZED && sel != COUPONS && sel !in repo.folders) selectedFolder = null
+    val currentFolderName = selectedFolder?.takeIf { it != UNCATEGORIZED && it != COUPONS } ?: ""
 
-    fun isUncategorized(c: MemberCard) = c.folder.isBlank() || c.folder !in repo.folders
+    fun isUncategorized(c: MemberCard) = !c.isCoupon && (c.folder.isBlank() || c.folder !in repo.folders)
+    val coupons = repo.cards.filter { it.isCoupon }
+    val activeCoupons = coupons.count { !it.isInactive }
 
     /** 點卡片：只綁定 App 的卡直接開 App；有條碼的卡顯示條碼。 */
     fun openCard(card: MemberCard) {
@@ -136,8 +143,10 @@ fun ListScreen(
                 it.appLabel.contains(query, ignoreCase = true) || it.folder.contains(query, ignoreCase = true)
         }
         .sortedWith(comparator)
+    // 搜尋時連票券一起找；平常票券只出現在「票券」分類
+    val matchedCards = if (query.isNotBlank()) matched else matched.filter { !it.isCoupon }
     val hasUncategorized = repo.folders.isNotEmpty() && repo.cards.any { isUncategorized(it) }
-    val expiringCount = repo.cards.count { expiryBadge(it) != null }
+    val expiringCount = repo.cards.count { !it.isInactive && expiryBadge(it) != null }
     val listMode = settings.viewMode == AppSettings.VIEW_LIST
 
     val tile: @Composable (MemberCard) -> Unit = { card ->
@@ -226,6 +235,18 @@ fun ListScreen(
                                 onAdd(currentFolderName)
                             },
                         )
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text("新增票券")
+                                    Text("優惠券、兌換券、電子票，可設到期日", fontSize = 11.sp, color = Hud.TextDim)
+                                }
+                            },
+                            onClick = {
+                                addMenuOpen = false
+                                onAddCoupon()
+                            },
+                        )
                     }
                 }
             },
@@ -274,10 +295,17 @@ fun ListScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     item(key = "all") {
-                        FolderChip("全部", repo.cards.size, selectedFolder == null) { selectedFolder = null }
+                        FolderChip("全部", repo.cards.count { !it.isCoupon }, selectedFolder == null) { selectedFolder = null }
+                    }
+                    if (coupons.isNotEmpty()) {
+                        item(key = "coupons") {
+                            FolderChip("票券", activeCoupons, selectedFolder == COUPONS) {
+                                selectedFolder = if (selectedFolder == COUPONS) null else COUPONS
+                            }
+                        }
                     }
                     items(repo.folders.toList(), key = { "f_$it" }) { f ->
-                        FolderChip(f, repo.cards.count { it.folder == f }, selectedFolder == f) {
+                        FolderChip(f, repo.cards.count { it.folder == f && !it.isCoupon }, selectedFolder == f) {
                             selectedFolder = if (selectedFolder == f) null else f
                         }
                     }
@@ -316,16 +344,23 @@ fun ListScreen(
                             settings.sortMode == AppSettings.SORT_SMART
                         if (grouped) {
                             repo.folders.toList().forEachIndexed { i, f ->
-                                val group = matched.filter { it.folder == f }
+                                val group = matchedCards.filter { it.folder == f }
                                 if (group.isNotEmpty()) section("h_$i", f, group, tile)
                             }
-                            val rest = matched.filter { isUncategorized(it) }
+                            val rest = matchedCards.filter { isUncategorized(it) }
                             if (rest.isNotEmpty()) section("h_none", "未分類", rest, tile)
+                            val liveCoupons = coupons.filter { !it.isInactive }
+                                .sortedBy { if (it.expiry > 0) it.expiry else Long.MAX_VALUE }
+                            if (liveCoupons.isNotEmpty()) section("h_coupons", "票券", liveCoupons, tile)
                         } else {
                             val list = when (folderSel) {
-                                null -> matched
-                                UNCATEGORIZED -> matched.filter { isUncategorized(it) }
-                                else -> matched.filter { it.folder == folderSel }
+                                null -> matchedCards
+                                COUPONS -> matched.filter { it.isCoupon }.sortedWith(
+                                    compareBy<MemberCard> { it.isInactive }
+                                        .thenBy { if (it.expiry > 0) it.expiry else Long.MAX_VALUE }
+                                )
+                                UNCATEGORIZED -> matchedCards.filter { isUncategorized(it) }
+                                else -> matchedCards.filter { it.folder == folderSel }
                             }
                             if (list.isEmpty()) {
                                 item(span = { GridItemSpan(maxLineSpan) }, key = "empty") {
@@ -499,9 +534,14 @@ private fun CardItem(
     val hasApp = card.appPackage.isNotBlank() || card.link.isNotBlank()
     val badge = expiryBadge(card)
     val shape = RoundedCornerShape(if (listMode) 8.dp else 12.dp)
-    val tag = if (appOnly) "APP" else shortFormat(card.format)
+    val tag = when {
+        card.isCoupon && card.used -> "已使用"
+        card.isCoupon -> "TICKET"
+        appOnly -> "APP"
+        else -> shortFormat(card.format)
+    }
 
-    Box {
+    Box(Modifier.alpha(if (card.isInactive) 0.42f else 1f)) {
         val base = Modifier
             .fillMaxWidth()
             .clip(shape)

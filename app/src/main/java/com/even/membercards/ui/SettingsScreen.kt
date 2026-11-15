@@ -45,6 +45,9 @@ import com.even.membercards.data.AppSettings
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.LedgerRepository
 import com.even.membercards.data.Updater
+import com.even.membercards.ReminderWorker
+import android.Manifest
+import android.os.Build
 import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,6 +64,11 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showFolders by remember { mutableStateOf(false) }
     val version = remember { Updater.currentVersion(context) }
+    var notifyGranted by remember { mutableStateOf(ReminderWorker.canNotify(context)) }
+    val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        notifyGranted = ok
+        if (ok) settings.reminders = true else context.toast("沒有通知權限，無法提醒")
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -138,6 +146,28 @@ fun SettingsScreen(
                             }
                         },
                     )
+                }
+
+                HudSection("01-B", "提醒")
+                HudPanel {
+                    SwitchRow(
+                        title = "提醒通知",
+                        desc = "會員卡／票券快到期、定期收支明天扣款、本月支出達預算 80% 時通知（每天早上 9 點檢查）",
+                        checked = settings.reminders && notifyGranted,
+                        onChange = { on ->
+                            if (on && !ReminderWorker.canNotify(context) && Build.VERSION.SDK_INT >= 33) {
+                                notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                settings.reminders = on
+                                notifyGranted = ReminderWorker.canNotify(context)
+                            }
+                        },
+                    )
+                    HudDivider()
+                    NavRow("立即檢查一次", "馬上檢查有沒有要提醒的事") {
+                        val n = ReminderWorker.check(context)
+                        context.toast(if (n > 0) "已送出 $n 則提醒" else "目前沒有需要提醒的事")
+                    }
                 }
 
                 HudSection("02", "顯示")

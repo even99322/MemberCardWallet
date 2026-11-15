@@ -528,6 +528,47 @@ class LedgerRepository private constructor(context: Context) {
         return start.atDay(r.day.coerceAtMost(start.lengthOfMonth()))
     }
 
+    // ---------- 一句話記帳 ----------
+
+    private val incomeWords = listOf("薪水", "薪資", "收入", "獎金", "退款", "入帳", "紅包", "利息", "股利", "兼職", "收到")
+
+    /**
+     * 解析「午餐 120」「加油 1500 信用卡」「薪水 32000」這類一句話。
+     * 金額取最後一個數字；有記過同樣備註就沿用當時的分類與帳戶。
+     */
+    fun quickParse(text: String, cards: List<MemberCard> = emptyList()): LedgerEntry? {
+        val t = text.trim()
+        if (t.isEmpty()) return null
+        val m = Regex("""(\d[\d,]*(?:\.\d+)?)\s*(?:元|塊|圓|NT|TWD)?""").findAll(t).lastOrNull() ?: return null
+        val amount = m.groupValues[1].replace(",", "").toDoubleOrNull() ?: return null
+        if (amount <= 0) return null
+        var note = (t.substring(0, m.range.first) + " " + t.substring(m.range.last + 1))
+            .replace("$", " ").replace("＄", " ")
+            .replace(Regex("""\s+"""), " ").trim()
+            .replace(Regex("""(花了|付了|用了|總共|花|付|共)$"""), "")
+            .trim().trim('，', ',', '。', ' ')
+        val acc = accounts.sortedByDescending { it.name.length }.firstOrNull { note.contains(it.name, ignoreCase = true) }
+        if (acc != null) note = note.replace(acc.name, "", ignoreCase = true).replace(Regex("""\s+"""), " ").trim()
+        val type = if (incomeWords.any { note.contains(it) }) EntryType.INCOME else EntryType.EXPENSE
+        val history = entries.filter { it.type == type && it.note.isNotBlank() && it.note == note }.maxByOrNull { it.time }
+        val category = history?.category
+            ?: if (type == EntryType.INCOME) {
+                Categories.income.firstOrNull { note.contains(it.name) }?.name
+                    ?: if (note.contains("薪")) "薪水" else "其他收入"
+            } else {
+                categories(EntryType.EXPENSE).firstOrNull { c -> c.name.length >= 2 && note.contains(c.name) }?.name
+                    ?: Categories.expense.firstOrNull { c -> Categories.defaultNotes(c.name).any { note.contains(it) } }?.name
+                    ?: Categories.guess(note, cards)
+            }
+        return LedgerEntry(
+            amount = Math.round(amount * 100) / 100.0,
+            note = note,
+            category = category,
+            type = type,
+            account = acc?.id ?: history?.account ?: defaultAccount,
+        )
+    }
+
     // ---------- 搜尋 ----------
 
     fun search(query: String): List<LedgerEntry> {

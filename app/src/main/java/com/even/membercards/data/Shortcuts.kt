@@ -15,6 +15,7 @@ import com.even.membercards.MainActivity
 object Shortcuts {
     const val ACTION_OPEN_CARD = "com.even.membercards.OPEN_CARD"
     const val EXTRA_CARD_ID = "card_id"
+    const val ACTION_ADD_ENTRY = "com.even.membercards.ADD_ENTRY"
 
     private fun shortcutId(cardId: String) = "card_$cardId"
 
@@ -57,11 +58,31 @@ object Shortcuts {
     fun updateDynamic(context: Context, cards: List<MemberCard>) {
         runCatching {
             val max = minOf(4, ShortcutManagerCompat.getMaxShortcutCountPerActivity(context))
+            // 固定兩個：記一筆、載具條碼；其餘放最常用的卡片
+            val fixed = listOf(
+                actionShortcut(context, "add_entry", "記一筆", "＋", 0xFF38E8FF, ACTION_ADD_ENTRY),
+                actionShortcut(context, "carrier", "載具條碼", "載", 0xFF8B7CFF, com.even.membercards.CarrierWidget.ACTION_SHOW_CARRIER),
+            )
             val top = cards
+                .filter { !it.isInactive }
                 .sortedWith(compareByDescending<MemberCard> { it.favorite }.thenByDescending { it.lastUsed })
-                .take(max)
-            ShortcutManagerCompat.setDynamicShortcuts(context, top.map { build(context, it) })
+                .take((max - fixed.size).coerceAtLeast(0))
+            ShortcutManagerCompat.setDynamicShortcuts(context, fixed + top.map { build(context, it) })
         }
+    }
+
+    private fun actionShortcut(context: Context, id: String, label: String, glyph: String, color: Long, action: String): ShortcutInfoCompat {
+        val icon = icon(MemberCard(name = glyph, number = "", color = color))
+        return ShortcutInfoCompat.Builder(context, "action_$id")
+            .setShortLabel(label)
+            .setLongLabel(label)
+            .setIcon(icon)
+            .setIntent(
+                Intent(context, MainActivity::class.java)
+                    .setAction(action)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            )
+            .build()
     }
 
     /** 卡片內容變更時同步更新已釘選的捷徑。 */

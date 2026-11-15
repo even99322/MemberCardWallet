@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -126,6 +127,7 @@ fun DetailScreen(
                         IconButton(onClick = {
                             if (!Shortcuts.requestPin(context, card)) context.toast("你的桌面不支援新增捷徑")
                         }) { Icon(Icons.Filled.Home, "加到主畫面") }
+                        IconButton(onClick = { CardShare.share(context, card) }) { Icon(Icons.Filled.Share, "分享") }
                         IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, "編輯") }
                         IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, "刪除") }
                     },
@@ -227,6 +229,27 @@ fun DetailScreen(
                             Spacer(Modifier.height(6.dp))
                             Text("這張卡的條碼在店家 App 內", color = Hud.TextDim, fontSize = 13.sp)
                         }
+                    }
+                }
+
+                // 票券：標記已使用
+                if (card.isCoupon) {
+                    Spacer(Modifier.height(16.dp))
+                    HudButton(
+                        text = if (card.used) "↺  還原為未使用" else "✓  標記為已使用",
+                        onClick = {
+                            val nowUsed = !card.used
+                            repo.upsert(card.copy(used = nowUsed, usedAt = if (nowUsed) System.currentTimeMillis() else 0L))
+                            context.toast(if (nowUsed) "已標記為已使用" else "已還原")
+                            if (nowUsed) onBack()
+                        },
+                        accent = if (card.used) Hud.TextDim else Hud.Ok,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                    )
+                    if (card.used && card.usedAt > 0) {
+                        Text("使用於 ${timeAgo(card.usedAt)}", style = MonoLabel, color = Hud.TextDim, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
 

@@ -349,6 +349,10 @@ private fun LedgerDetailTab(
             }
         }
 
+        if (!searchOpen) {
+            item(key = "quick") { QuickEntryBar(ledger) }
+        }
+
         if (!searching) item(key = "header") {
             HudPanel {
                 Row(

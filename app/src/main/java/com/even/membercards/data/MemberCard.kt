@@ -28,7 +28,18 @@ data class MemberCard(
     val pointsUpdated: Long = 0L,
     /** 開啟店家 App 後自動點到條碼頁的步驟 */
     val autoSteps: List<AutoStep> = emptyList(),
+    /** card = 會員卡；coupon = 票券（優惠券、兌換券） */
+    val kind: String = KIND_CARD,
+    /** 票券是否已使用 */
+    val used: Boolean = false,
+    val usedAt: Long = 0L,
 ) {
+    val isCoupon: Boolean get() = kind == KIND_COUPON
+
+    /** 已使用或已過期的票券 */
+    val isInactive: Boolean
+        get() = isCoupon && (used || (expiry > 0 && expiry + 86_400_000L < System.currentTimeMillis()))
+
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("name", name)
@@ -48,6 +59,9 @@ data class MemberCard(
         put("points", points)
         put("pointsUpdated", pointsUpdated)
         put("autoSteps", AutoStep.listToJson(autoSteps))
+        put("kind", kind)
+        put("used", used)
+        put("usedAt", usedAt)
     }
 
     companion object {
@@ -70,6 +84,12 @@ data class MemberCard(
             points = o.optString("points"),
             pointsUpdated = o.optLong("pointsUpdated", 0L),
             autoSteps = AutoStep.listFromJson(o.optJSONArray("autoSteps")),
+            kind = o.optString("kind", KIND_CARD).ifBlank { KIND_CARD },
+            used = o.optBoolean("used", false),
+            usedAt = o.optLong("usedAt", 0L),
         )
+
+        const val KIND_CARD = "card"
+        const val KIND_COUPON = "coupon"
     }
 }

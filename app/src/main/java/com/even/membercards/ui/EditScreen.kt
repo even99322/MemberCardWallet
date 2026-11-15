@@ -87,6 +87,7 @@ fun EditScreen(
     sharedText: String? = null,
     sharedSubject: String? = null,
     defaultFolder: String = "",
+    defaultKind: String = MemberCard.KIND_CARD,
     onBack: () -> Unit,
     onSaved: (String) -> Unit,
 ) {
@@ -111,6 +112,8 @@ fun EditScreen(
     var datePicker by remember { mutableStateOf(false) }
     var decoding by remember { mutableStateOf(false) }
     var points by rememberSaveable { mutableStateOf(existing?.points ?: "") }
+    var kind by rememberSaveable { mutableStateOf(existing?.kind ?: defaultKind) }
+    var used by rememberSaveable { mutableStateOf(existing?.used ?: false) }
     val autoSteps = remember { mutableStateListOf<AutoStep>().apply { addAll(existing?.autoSteps.orEmpty()) } }
     // 新卡片先決定 id，照片才能先存
     val draftId = rememberSaveable { existing?.id ?: java.util.UUID.randomUUID().toString() }
@@ -197,6 +200,9 @@ fun EditScreen(
                     folder = folder,
                     expiry = expiry,
                     points = points.trim(),
+                    kind = kind,
+                    used = if (kind == MemberCard.KIND_COUPON) used else false,
+                    usedAt = if (kind == MemberCard.KIND_COUPON && used) (existing?.usedAt?.takeIf { it > 0 } ?: System.currentTimeMillis()) else 0L,
                     autoSteps = if (appPackage.isBlank()) emptyList() else autoSteps.toList(),
                     pointsUpdated = if (points.trim() != (existing?.points ?: "")) System.currentTimeMillis()
                     else existing?.pointsUpdated ?: 0L,
@@ -221,7 +227,15 @@ fun EditScreen(
                 TopAppBar(
                     title = {
                         Column {
-                            Text(if (existing == null) "新增會員卡" else "編輯會員卡", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                when {
+                                    kind == MemberCard.KIND_COUPON && existing == null -> "新增票券"
+                                    kind == MemberCard.KIND_COUPON -> "編輯票券"
+                                    existing == null -> "新增會員卡"
+                                    else -> "編輯會員卡"
+                                },
+                                fontWeight = FontWeight.SemiBold,
+                            )
                             Text(
                                 if (existing == null) "NEW CARD // INPUT" else "EDIT // ${existing.id.take(8).uppercase()}",
                                 style = MonoLabel,
@@ -249,7 +263,33 @@ fun EditScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 // 01 條碼
-                HudSection("01", "會員條碼")
+                // 類型：會員卡／票券
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(MemberCard.KIND_CARD to "會員卡", MemberCard.KIND_COUPON to "票券（優惠券／兌換券）").forEach { (k, label) ->
+                        FilterChip(
+                            selected = kind == k,
+                            onClick = { kind = k },
+                            label = { Text(label) },
+                            colors = hudChipColors(),
+                            border = hudChipBorder(kind == k),
+                        )
+                    }
+                }
+                if (kind == MemberCard.KIND_COUPON) {
+                    Text(
+                        "票券會放在首頁「票券」分類，記得在「05 // 其他」設定到期日，到期前會提醒你。",
+                        color = Hud.TextDim,
+                        fontSize = 12.sp,
+                    )
+                    if (existing != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("已使用", color = Hud.Text, modifier = Modifier.weight(1f))
+                            androidx.compose.material3.Switch(checked = used, onCheckedChange = { used = it })
+                        }
+                    }
+                }
+
+                HudSection("01", if (kind == MemberCard.KIND_COUPON) "票券條碼" else "會員條碼")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     HudButton(
                         text = "◎  相機掃描",

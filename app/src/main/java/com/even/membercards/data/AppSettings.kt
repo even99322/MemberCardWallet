@@ -27,6 +27,27 @@ class AppSettings private constructor(context: Context) {
     private val autoRecordState = mutableStateOf(prefs.getBoolean(K_AUTO_RECORD, true))
     private val captureOtherState = mutableStateOf(prefs.getBoolean(K_CAPTURE_OTHER, false))
     private val budgetState = mutableStateOf(prefs.getLong(K_BUDGET, 0L))
+    private val remindersState = mutableStateOf(prefs.getBoolean(K_REMINDERS, true))
+
+    /** 到期、定期扣款、預算提醒通知 */
+    var reminders: Boolean
+        get() = remindersState.value
+        set(v) {
+            remindersState.value = v
+            prefs.edit().putBoolean(K_REMINDERS, v).apply()
+            com.even.membercards.ReminderWorker.schedule(appContext, v)
+        }
+
+    /** 已送出的提醒（避免同一件事重複提醒） */
+    fun reminderSent(key: String): Boolean = prefs.getStringSet(K_SENT, emptySet())?.contains(key) == true
+
+    fun markReminderSent(key: String) {
+        val set = (prefs.getStringSet(K_SENT, emptySet()) ?: emptySet()).toMutableSet()
+        set.add(key)
+        // 只保留最近 300 筆
+        val trimmed = if (set.size > 300) set.toList().takeLast(300).toSet() else set
+        prefs.edit().putStringSet(K_SENT, trimmed).apply()
+    }
 
     /** 讀取 LINE Pay 付款通知自動記帳（還需要系統的通知存取權） */
     var autoRecord: Boolean
@@ -175,6 +196,8 @@ class AppSettings private constructor(context: Context) {
         private const val K_AUTO_RECORD = "auto_record"
         private const val K_CAPTURE_OTHER = "capture_other_pay"
         private const val K_BUDGET = "monthly_budget"
+        private const val K_REMINDERS = "reminders"
+        private const val K_SENT = "reminders_sent"
 
         private fun phonesToJson(list: List<PhoneEntry>): JSONArray {
             val arr = JSONArray()

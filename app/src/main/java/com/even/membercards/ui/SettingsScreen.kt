@@ -1,5 +1,12 @@
 package com.even.membercards.ui
 
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -60,6 +67,7 @@ fun SettingsScreen(
     onQuickSetup: () -> Unit,
     onOpenLedger: () -> Unit,
     onAutoRecord: () -> Unit,
+    onOpenInvoice: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var showFolders by remember { mutableStateOf(false) }
@@ -172,6 +180,15 @@ fun SettingsScreen(
 
                 HudSection("02", "顯示")
                 HudPanel {
+                    Text("外觀主題", color = Hud.Text, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp))
+                    ThemePicker(
+                        current = settings.theme,
+                        onPick = {
+                            settings.theme = it
+                            Hud.palette = Palettes.of(it)
+                        },
+                    )
+                    HudDivider()
                     Text("檢視方式", color = Hud.Text, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
                         listOf(AppSettings.VIEW_GRID to "卡片格狀", AppSettings.VIEW_LIST to "精簡清單").forEach { (k, label) ->
@@ -222,6 +239,8 @@ fun SettingsScreen(
                     NavRow("快捷列", "手機條碼載具、電話號碼、常用付款 App") { onQuickSetup() }
                     HudDivider()
                     NavRow("記帳", "本月支出、預算、分類統計、匯出 CSV") { onOpenLedger() }
+                    HudDivider()
+                    NavRow("發票對獎", "掃描紙本電子發票自動記帳、開獎自動對獎") { onOpenInvoice() }
                     HudDivider()
                     NavRow(
                         "自動記帳",
@@ -290,7 +309,7 @@ private fun SwitchRow(title: String, desc: String, checked: Boolean, onChange: (
             checked = checked,
             onCheckedChange = onChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Hud.Bg,
+                checkedThumbColor = Hud.OnPrimary,
                 checkedTrackColor = Hud.Cyan,
                 uncheckedThumbColor = Hud.TextDim,
                 uncheckedTrackColor = Hud.Surface2,
@@ -314,5 +333,84 @@ private fun NavRow(title: String, desc: String, onClick: () -> Unit) {
             Text(desc, color = Hud.TextDim, fontSize = 12.sp)
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = Hud.TextFaint)
+    }
+}
+
+
+/** 主題選擇：每個主題顯示一張迷你預覽 */
+@Composable
+private fun ThemePicker(current: String, onPick: (String) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Palettes.all.forEach { p ->
+            val sel = p.key == current
+            Column(
+                Modifier
+                    .width(92.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(
+                        if (sel) 2.dp else 1.dp,
+                        if (sel) Hud.Cyan else Hud.Line,
+                        RoundedCornerShape(12.dp),
+                    )
+                    .clickable { onPick(p.key) },
+            ) {
+                // 迷你預覽：背景、卡片、主色按鈕
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(70.dp)
+                        .background(p.bg)
+                        .padding(8.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(22.dp)
+                                .clip(RoundedCornerShape((p.radius / 2).dp))
+                                .background(p.surface2)
+                                .border(1.dp, p.line, RoundedCornerShape((p.radius / 2).dp)),
+                        ) {
+                            Box(
+                                Modifier
+                                    .padding(start = 6.dp)
+                                    .align(Alignment.CenterStart)
+                                    .width(30.dp)
+                                    .height(4.dp)
+                                    .background(p.text.copy(alpha = 0.7f)),
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(
+                                Modifier
+                                    .width(34.dp)
+                                    .height(16.dp)
+                                    .clip(RoundedCornerShape((p.radius / 2).dp))
+                                    .background(p.primary),
+                            )
+                            Box(Modifier.size(16.dp).clip(RoundedCornerShape(50)).background(p.secondary))
+                            Box(Modifier.size(16.dp).clip(RoundedCornerShape(50)).background(p.ok))
+                        }
+                    }
+                }
+                Text(
+                    p.label,
+                    fontSize = 12.sp,
+                    color = if (sel) Hud.Cyan else Hud.TextDim,
+                    fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Hud.Surface2)
+                        .padding(vertical = 6.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
     }
 }

@@ -242,7 +242,7 @@ fun LedgerEditScreen(
                         val sel = type == k
                         Text(
                             label,
-                            color = if (sel) Hud.Bg else Hud.TextDim,
+                            color = if (sel) Hud.OnPrimary else Hud.TextDim,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 15.sp,
                             textAlign = TextAlign.Center,
@@ -387,7 +387,7 @@ fun LedgerEditScreen(
                             items(quick) { q ->
                                 Text(
                                     q,
-                                    color = if (note == q) Hud.Bg else Hud.Text,
+                                    color = if (note == q) Hud.OnPrimary else Hud.Text,
                                     fontSize = 14.sp,
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
@@ -491,7 +491,7 @@ fun LedgerEditScreen(
                         checked = ledger.autoPopupAccount,
                         onCheckedChange = { ledger.autoPopupAccount = it },
                         colors = SwitchDefaults.colors(
-                            checkedThumbColor = Hud.Bg,
+                            checkedThumbColor = Hud.OnPrimary,
                             checkedTrackColor = Hud.Cyan,
                             uncheckedThumbColor = Hud.TextDim,
                             uncheckedTrackColor = Hud.Surface2,
@@ -591,7 +591,7 @@ private fun RowScope.Key(
     ) {
         Text(
             label,
-            color = if (filled) Hud.Bg else accent,
+            color = if (filled) Hud.OnPrimary else accent,
             fontFamily = if (small) null else Mono,
             fontSize = if (small) 15.sp else 22.sp,
             fontWeight = if (filled) FontWeight.Bold else FontWeight.Medium,

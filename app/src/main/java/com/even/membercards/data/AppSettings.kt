@@ -30,6 +30,16 @@ class AppSettings private constructor(context: Context) {
     private val remindersState = mutableStateOf(prefs.getBoolean(K_REMINDERS, true))
     private val carrierOnCardState = mutableStateOf(prefs.getBoolean(K_CARRIER_ON_CARD, true))
 
+    private val themeState = mutableStateOf(prefs.getString(K_THEME, "hud") ?: "hud")
+
+    /** 介面主題（Palettes.key） */
+    var theme: String
+        get() = themeState.value
+        set(v) {
+            themeState.value = v
+            prefs.edit().putString(K_THEME, v).apply()
+        }
+
     /** 卡片頁上方同時顯示載具條碼 */
     var carrierOnCard: Boolean
         get() = carrierOnCardState.value
@@ -209,6 +219,7 @@ class AppSettings private constructor(context: Context) {
         private const val K_BUDGET = "monthly_budget"
         private const val K_REMINDERS = "reminders"
         private const val K_CARRIER_ON_CARD = "carrier_on_card"
+        private const val K_THEME = "theme"
         private const val K_SENT = "reminders_sent"
 
         private fun phonesToJson(list: List<PhoneEntry>): JSONArray {

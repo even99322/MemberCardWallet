@@ -117,7 +117,7 @@ fun QuickEntryBar(ledger: LedgerRepository, modifier: Modifier = Modifier) {
                 Spacer(Modifier.width(8.dp))
                 Text(
                     "✓",
-                    color = Hud.Bg,
+                    color = Hud.OnPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,

@@ -33,7 +33,13 @@ data class MemberCard(
     /** 票券是否已使用 */
     val used: Boolean = false,
     val usedAt: Long = 0L,
+    /** 寄杯／多次券：總份數（0 = 一般單次票券） */
+    val uses: Int = 0,
+    /** 寄杯／多次券：剩餘份數 */
+    val usesLeft: Int = 0,
 ) {
+    val isMultiUse: Boolean get() = isCoupon && uses > 0
+
     val isCoupon: Boolean get() = kind == KIND_COUPON
 
     /** 已使用或已過期的票券 */
@@ -62,6 +68,8 @@ data class MemberCard(
         put("kind", kind)
         put("used", used)
         put("usedAt", usedAt)
+        put("uses", uses)
+        put("usesLeft", usesLeft)
     }
 
     companion object {
@@ -87,6 +95,8 @@ data class MemberCard(
             kind = o.optString("kind", KIND_CARD).ifBlank { KIND_CARD },
             used = o.optBoolean("used", false),
             usedAt = o.optLong("usedAt", 0L),
+            uses = o.optInt("uses", 0),
+            usesLeft = o.optInt("usesLeft", 0),
         )
 
         const val KIND_CARD = "card"

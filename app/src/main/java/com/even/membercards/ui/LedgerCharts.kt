@@ -103,7 +103,7 @@ fun LedgerChartsTab(ledger: LedgerRepository, month: YearMonth, onMonth: (YearMo
                     val sel = type == k
                     Text(
                         label,
-                        color = if (sel) Hud.Bg else Hud.TextDim,
+                        color = if (sel) Hud.OnPrimary else Hud.TextDim,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,

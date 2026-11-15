@@ -1,5 +1,7 @@
 package com.even.membercards.ui
 
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -114,6 +116,8 @@ fun EditScreen(
     var points by rememberSaveable { mutableStateOf(existing?.points ?: "") }
     var kind by rememberSaveable { mutableStateOf(existing?.kind ?: defaultKind) }
     var used by rememberSaveable { mutableStateOf(existing?.used ?: false) }
+    var usesText by rememberSaveable { mutableStateOf(existing?.uses?.takeIf { it > 0 }?.toString() ?: "") }
+    var usesLeftText by rememberSaveable { mutableStateOf(existing?.takeIf { it.uses > 0 }?.usesLeft?.toString() ?: "") }
     val autoSteps = remember { mutableStateListOf<AutoStep>().apply { addAll(existing?.autoSteps.orEmpty()) } }
     // 新卡片先決定 id，照片才能先存
     val draftId = rememberSaveable { existing?.id ?: java.util.UUID.randomUUID().toString() }
@@ -201,6 +205,11 @@ fun EditScreen(
                     expiry = expiry,
                     points = points.trim(),
                     kind = kind,
+                    uses = if (kind == MemberCard.KIND_COUPON) (usesText.toIntOrNull() ?: 0).coerceIn(0, 999) else 0,
+                    usesLeft = if (kind == MemberCard.KIND_COUPON) {
+                        val total = (usesText.toIntOrNull() ?: 0).coerceIn(0, 999)
+                        (usesLeftText.toIntOrNull() ?: total).coerceIn(0, total)
+                    } else 0,
                     used = if (kind == MemberCard.KIND_COUPON) used else false,
                     usedAt = if (kind == MemberCard.KIND_COUPON && used) (existing?.usedAt?.takeIf { it > 0 } ?: System.currentTimeMillis()) else 0L,
                     autoSteps = if (appPackage.isBlank()) emptyList() else autoSteps.toList(),
@@ -281,6 +290,30 @@ fun EditScreen(
                         color = Hud.TextDim,
                         fontSize = 12.sp,
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = usesText,
+                            onValueChange = { usesText = it.filter { c -> c.isDigit() }.take(3) },
+                            label = { Text("寄杯／多次券份數") },
+                            placeholder = { Text("單次可留空") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = hudFieldColors(),
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (usesText.isNotBlank()) {
+                            OutlinedTextField(
+                                value = usesLeftText,
+                                onValueChange = { usesLeftText = it.filter { c -> c.isDigit() }.take(3) },
+                                label = { Text("剩餘") },
+                                placeholder = { Text(usesText) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                colors = hudFieldColors(),
+                                modifier = Modifier.weight(0.6f),
+                            )
+                        }
+                    }
                     if (existing != null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("已使用", color = Hud.Text, modifier = Modifier.weight(1f))
@@ -562,7 +595,7 @@ fun EditScreen(
                     shape = RoundedCornerShape(8.dp),
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                         containerColor = Hud.Cyan,
-                        contentColor = Hud.Bg,
+                        contentColor = Hud.OnPrimary,
                     ),
                     modifier = Modifier
                         .fillMaxWidth()

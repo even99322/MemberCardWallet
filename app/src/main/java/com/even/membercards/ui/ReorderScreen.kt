@@ -129,7 +129,7 @@ fun ReorderScreen(repo: CardRepository, settings: AppSettings, onBack: () -> Uni
                     listOf("卡片順序", "資料夾順序").forEachIndexed { i, label ->
                         Text(
                             label,
-                            color = if (tab == i) Hud.Bg else Hud.TextDim,
+                            color = if (tab == i) Hud.OnPrimary else Hud.TextDim,
                             fontWeight = FontWeight.SemiBold,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             modifier = Modifier

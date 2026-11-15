@@ -94,6 +94,7 @@ fun ListScreen(
     onOpenSettings: () -> Unit,
     onQuickSetup: () -> Unit,
     onOpenLedger: () -> Unit,
+    onOpenInvoice: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -211,7 +212,7 @@ fun ListScreen(
                         icon = { Icon(Icons.Filled.Add, null) },
                         text = { Text("新增", fontWeight = FontWeight.SemiBold) },
                         containerColor = Hud.Cyan,
-                        contentColor = Hud.Bg,
+                        contentColor = Hud.OnPrimary,
                         shape = RoundedCornerShape(10.dp),
                     )
                     DropdownMenu(expanded = addMenuOpen, onDismissRequest = { addMenuOpen = false }) {
@@ -269,6 +270,7 @@ fun ListScreen(
                         onShowCarrier = { showCarrier = it },
                         onShowPhones = { showPhones = true },
                         onOpenLedger = onOpenLedger,
+                        onOpenInvoice = onOpenInvoice,
                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
                     )
                 }
@@ -540,6 +542,7 @@ private fun CardItem(
     val shape = RoundedCornerShape(if (listMode) 8.dp else 12.dp)
     val tag = when {
         card.isCoupon && card.used -> "已使用"
+        card.isMultiUse -> "剩 ${card.usesLeft}/${card.uses}"
         card.isCoupon -> "TICKET"
         appOnly -> "APP"
         else -> shortFormat(card.format)

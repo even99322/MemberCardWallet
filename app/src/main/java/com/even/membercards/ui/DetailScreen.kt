@@ -275,13 +275,78 @@ fun DetailScreen(
                 }
 
                 // 票券：標記已使用
-                if (card.isCoupon) {
+                if (card.isMultiUse && !card.used) {
+                    Spacer(Modifier.height(16.dp))
+                    // 寄杯／多次券：剩餘份數格子
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                    ) {
+                        val shown = card.uses.coerceAtMost(20)
+                        repeat(shown) { i ->
+                            Box(
+                                Modifier
+                                    .weight(1f, fill = false)
+                                    .size(width = 14.dp, height = 14.dp)
+                                    .background(
+                                        if (i < card.usesLeft) Hud.Ok else Hud.Line,
+                                        RoundedCornerShape(3.dp),
+                                    )
+                            )
+                        }
+                    }
+                    Text(
+                        "剩 ${card.usesLeft} / ${card.uses} 份",
+                        color = Hud.Ok,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HudButton(
+                            text = "✓  使用一份",
+                            onClick = {
+                                val left = (card.usesLeft - 1).coerceAtLeast(0)
+                                val done = left == 0
+                                repo.upsert(
+                                    card.copy(
+                                        usesLeft = left,
+                                        used = done,
+                                        usedAt = System.currentTimeMillis(),
+                                    )
+                                )
+                                context.toast(if (done) "全部用完了，已移到已使用" else "已使用一份，剩 $left 份")
+                                if (done) onBack()
+                            },
+                            accent = Hud.Ok,
+                            modifier = Modifier.weight(1f).height(52.dp),
+                        )
+                        HudButton(
+                            text = "↺ 補回",
+                            onClick = {
+                                if (card.usesLeft < card.uses) {
+                                    repo.upsert(card.copy(usesLeft = card.usesLeft + 1))
+                                }
+                            },
+                            accent = Hud.TextDim,
+                            enabled = card.usesLeft < card.uses,
+                            modifier = Modifier.weight(0.5f).height(52.dp),
+                        )
+                    }
+                } else if (card.isCoupon) {
                     Spacer(Modifier.height(16.dp))
                     HudButton(
                         text = if (card.used) "↺  還原為未使用" else "✓  標記為已使用",
                         onClick = {
                             val nowUsed = !card.used
-                            repo.upsert(card.copy(used = nowUsed, usedAt = if (nowUsed) System.currentTimeMillis() else 0L))
+                            repo.upsert(
+                                card.copy(
+                                    used = nowUsed,
+                                    usedAt = if (nowUsed) System.currentTimeMillis() else 0L,
+                                    usesLeft = if (!nowUsed && card.uses > 0 && card.usesLeft == 0) card.uses else card.usesLeft,
+                                )
+                            )
                             context.toast(if (nowUsed) "已標記為已使用" else "已還原")
                             if (nowUsed) onBack()
                         },

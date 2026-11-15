@@ -31,6 +31,10 @@ import com.even.membercards.ui.LedgerScreen
 import com.even.membercards.data.Shortcuts
 import com.even.membercards.data.Updater
 import com.even.membercards.ui.AppTheme
+import com.even.membercards.ui.InvoiceScreen
+import com.even.membercards.data.InvoiceRepository
+import com.even.membercards.ui.Hud
+import com.even.membercards.ui.Palettes
 import com.even.membercards.ui.DetailScreen
 import com.even.membercards.ui.EditScreen
 import com.even.membercards.ui.ListScreen
@@ -59,6 +63,7 @@ sealed interface Screen {
     data object Reorder : Screen
     data object Ledger : Screen
     data object AutoRecord : Screen
+    data object Invoice : Screen
     data class LedgerEdit(
         val id: String?,
         val amount: Double? = null,
@@ -94,23 +99,41 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-        )
         val repo = CardRepository.instance(applicationContext)
         settings = AppSettings.instance(applicationContext)
+        Hud.palette = Palettes.of(settings.theme)
+        applySystemBars(Hud.palette.isLight)
         Shortcuts.updateDynamic(applicationContext, repo.cards.toList())
         ReminderWorker.schedule(applicationContext, settings.reminders)
         locked.value = settings.lockEnabled
         if (savedInstanceState == null) incoming.value = parse(intent)
         setContent {
+            val palette = Palettes.of(settings.theme)
+            LaunchedEffect(palette) {
+                Hud.palette = palette
+                applySystemBars(palette.isLight)
+            }
             AppTheme {
                 Box(Modifier.fillMaxSize()) {
                     App(repo, settings, incoming.value, locked.value) { incoming.value = null }
                     if (locked.value) LockScreen(onUnlock = { locked.value = false })
                 }
             }
+        }
+    }
+
+    private fun applySystemBars(light: Boolean) {
+        val t = android.graphics.Color.TRANSPARENT
+        if (light) {
+            enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.light(t, t),
+                navigationBarStyle = SystemBarStyle.light(t, t),
+            )
+        } else {
+            enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.dark(t),
+                navigationBarStyle = SystemBarStyle.dark(t),
+            )
         }
     }
 
@@ -294,6 +317,7 @@ fun App(
             onOpenSettings = { stack.add(Screen.Settings) },
             onQuickSetup = { stack.add(Screen.QuickSetup) },
             onOpenLedger = { stack.add(Screen.Ledger) },
+            onOpenInvoice = { stack.add(Screen.Invoice) },
             settings = settings,
         )
 
@@ -304,6 +328,13 @@ fun App(
             onAdd = { stack.add(Screen.LedgerEdit(null)) },
             onEdit = { stack.add(Screen.LedgerEdit(it)) },
             onAutoSetup = { stack.add(Screen.AutoRecord) },
+            onInvoice = { stack.add(Screen.Invoice) },
+        )
+
+        Screen.Invoice -> InvoiceScreen(
+            invoices = InvoiceRepository.instance(context),
+            ledger = LedgerRepository.instance(context),
+            onBack = { pop() },
         )
 
         Screen.AutoRecord -> AutoRecordScreen(
@@ -341,6 +372,7 @@ fun App(
             onQuickSetup = { stack.add(Screen.QuickSetup) },
             onOpenLedger = { stack.add(Screen.Ledger) },
             onAutoRecord = { stack.add(Screen.AutoRecord) },
+            onOpenInvoice = { stack.add(Screen.Invoice) },
             onCheckUpdate = { checkUpdate(manual = true) },
         )
 

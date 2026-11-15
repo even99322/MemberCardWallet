@@ -291,7 +291,7 @@ private fun SwitchLine(label: String, checked: Boolean, onChange: (Boolean) -> U
             checked = checked,
             onCheckedChange = onChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Hud.Bg,
+                checkedThumbColor = Hud.OnPrimary,
                 checkedTrackColor = Hud.Cyan,
                 uncheckedThumbColor = Hud.TextDim,
                 uncheckedTrackColor = Hud.Surface2,

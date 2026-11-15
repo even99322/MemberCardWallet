@@ -50,6 +50,17 @@ import java.time.temporal.ChronoUnit
 fun Modifier.hudBackground(): Modifier = this
     .background(Hud.Bg)
     .drawBehind {
+        if (!Hud.palette.grid) {
+            // 非科技風：只留一層很淡的主色光暈
+            drawRect(
+                Brush.radialGradient(
+                    colors = listOf(Hud.Cyan.copy(alpha = if (Hud.palette.isLight) 0.06f else 0.07f), Color.Transparent),
+                    center = Offset(size.width * 0.85f, 0f),
+                    radius = size.width * 0.9f,
+                )
+            )
+            return@drawBehind
+        }
         val step = 28.dp.toPx()
         val line = Hud.Line.copy(alpha = 0.35f)
         var x = 0f
@@ -78,6 +89,10 @@ fun Modifier.cornerBrackets(
     stroke: Dp = 1.5.dp,
     inset: Dp = 0.dp,
 ): Modifier = drawWithContent {
+    if (!Hud.palette.brackets) {
+        drawContent()
+        return@drawWithContent
+    }
     drawContent()
     val l = length.toPx()
     val s = stroke.toPx()
@@ -227,7 +242,7 @@ fun HudButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier,
-        shape = RoundedCornerShape(6.dp),
+        shape = RoundedCornerShape((Hud.palette.radius * 0.6f).dp),
         border = BorderStroke(1.dp, if (enabled) accent.copy(alpha = 0.6f) else Hud.Line),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = accent.copy(alpha = 0.06f),
@@ -305,8 +320,8 @@ fun HudPanel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
         modifier
             .fillMaxWidth()
-            .background(Hud.Surface.copy(alpha = 0.85f), RoundedCornerShape(10.dp))
-            .border(1.dp, Hud.Line, RoundedCornerShape(10.dp))
+            .background(Hud.Surface.copy(alpha = if (Hud.palette.isLight) 1f else 0.85f), RoundedCornerShape(Hud.palette.radius.dp))
+            .border(1.dp, Hud.Line, RoundedCornerShape(Hud.palette.radius.dp))
             .cornerBrackets(Hud.CyanDim, length = 8.dp, stroke = 1.dp)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.Top,

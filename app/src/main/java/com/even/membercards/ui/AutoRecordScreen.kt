@@ -270,7 +270,7 @@ private fun ToggleRow(title: String, desc: String, checked: Boolean, onChange: (
             checked = checked,
             onCheckedChange = onChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Hud.Bg,
+                checkedThumbColor = Hud.OnPrimary,
                 checkedTrackColor = Hud.Cyan,
                 uncheckedThumbColor = Hud.TextDim,
                 uncheckedTrackColor = Hud.Surface2,

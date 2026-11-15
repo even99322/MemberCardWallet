@@ -20,9 +20,12 @@ import androidx.work.WorkerParameters
 import com.even.membercards.data.AppSettings
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.EntryType
+import com.even.membercards.data.InvoiceRepository
+import com.even.membercards.data.InvoiceRules
 import com.even.membercards.data.LedgerRepository
 import com.even.membercards.data.Shortcuts
 import com.even.membercards.data.formatMoney
+import kotlinx.coroutines.runBlocking
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -41,7 +44,7 @@ import java.time.temporal.ChronoUnit
 class ReminderWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
 
     override fun doWork(): Result {
-        runCatching { check(applicationContext) }
+        runCatching { check(applicationContext, fetch = true) }
         return Result.success()
     }
 
@@ -71,7 +74,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : Worker(contex
                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
         /** 立即檢查一次（也給「測試提醒」用） */
-        fun check(context: Context): Int {
+        fun check(context: Context, fetch: Boolean = false): Int {
             val settings = AppSettings.instance(context)
             if (!settings.reminders || !canNotify(context)) return 0
             ensureChannel(context)
@@ -153,6 +156,27 @@ class ReminderWorker(context: Context, params: WorkerParameters) : Worker(contex
                         sent++
                     }
                 }
+            }
+            // 4. 發票對獎：開獎後自動下載中獎號碼並通知中獎
+            val inv = InvoiceRepository.instance(context)
+            if (fetch && inv.invoices.isNotEmpty()) {
+                val latest = InvoiceRules.latestDrawnPeriod(today)
+                if (inv.draw(latest) == null) {
+                    runCatching { runBlocking { inv.fetchDraws() } }
+                }
+            }
+            inv.invoices.toList().filter { (it.prize ?: 0) > 0 }.forEach { w ->
+                val key = "inv:${w.number}:${w.prize}"
+                if (settings.reminderSent(key)) return@forEach
+                notify(
+                    context,
+                    key.hashCode(),
+                    "🎉 發票中獎！${w.prizeName} ${formatMoney(w.prize!!.toDouble())}",
+                    "${w.number}（${InvoiceRules.label(w.period)}），兌獎期限 ${InvoiceRules.claimDeadline(w.period) ?: ""}",
+                    openApp(context),
+                )
+                settings.markReminderSent(key)
+                sent++
             }
             return sent
         }

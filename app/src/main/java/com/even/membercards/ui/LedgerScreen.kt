@@ -92,6 +92,7 @@ fun LedgerScreen(
     onAdd: () -> Unit,
     onEdit: (String) -> Unit,
     onAutoSetup: () -> Unit,
+    onInvoice: () -> Unit = {},
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var monthText by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
@@ -142,6 +143,7 @@ fun LedgerScreen(
                         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                     },
                     actions = {
+                        TextButton(onClick = onInvoice) { Text("發票", color = Hud.Cyan) }
                         if (tab == 0) {
                             IconButton(onClick = {
                                 searchOpen = !searchOpen
@@ -214,7 +216,7 @@ private fun LedgerBottomBar(tab: Int, onTab: (Int) -> Unit, onAdd: () -> Unit) {
                         .background(Hud.Cyan)
                         .clickable(onClick = onAdd),
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Filled.Add, "記一筆", tint = Hud.Bg, modifier = Modifier.size(30.dp)) }
+                ) { Icon(Icons.Filled.Add, "記一筆", tint = Hud.OnPrimary, modifier = Modifier.size(30.dp)) }
             }
             NavItem("帳戶", Icons.Filled.Home, tab == 2, Modifier.weight(1f)) { onTab(2) }
             NavItem("設定", Icons.Filled.Settings, tab == 3, Modifier.weight(1f)) { onTab(3) }
@@ -585,7 +587,7 @@ private fun LedgerSettingsTab(ledger: LedgerRepository, settings: AppSettings, o
                     checked = ledger.autoPopupAccount,
                     onCheckedChange = { ledger.autoPopupAccount = it },
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = Hud.Bg,
+                        checkedThumbColor = Hud.OnPrimary,
                         checkedTrackColor = Hud.Cyan,
                         uncheckedThumbColor = Hud.TextDim,
                         uncheckedTrackColor = Hud.Surface2,

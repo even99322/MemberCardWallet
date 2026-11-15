@@ -290,7 +290,7 @@ fun QuickSetupScreen(
                 Button(
                     onClick = { save() },
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Hud.Cyan, contentColor = Hud.Bg),
+                    colors = ButtonDefaults.buttonColors(containerColor = Hud.Cyan, contentColor = Hud.OnPrimary),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),

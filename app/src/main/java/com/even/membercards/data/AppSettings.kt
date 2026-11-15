@@ -186,6 +186,7 @@ class AppSettings private constructor(context: Context) {
         const val SORT_USAGE = "USAGE"
         const val SORT_ADDED = "ADDED"
         const val SORT_EXPIRY = "EXPIRY"
+        const val SORT_MANUAL = "MANUAL"
 
         val sortLabels = linkedMapOf(
             SORT_SMART to "智慧（常用＋最近）",
@@ -193,6 +194,7 @@ class AppSettings private constructor(context: Context) {
             SORT_NAME to "名稱",
             SORT_ADDED to "新增時間",
             SORT_EXPIRY to "到期日",
+            SORT_MANUAL to "自訂（拖曳）",
         )
 
         private const val K_LOCK = "lock"

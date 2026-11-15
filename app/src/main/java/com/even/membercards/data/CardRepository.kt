@@ -126,6 +126,27 @@ class CardRepository private constructor(private val context: Context) {
         save()
     }
 
+    /**
+     * 依拖曳結果重排一組卡片：這組卡片原本佔的位置，依新順序重新填入
+     * （例如只排某個資料夾，其他卡片的位置不變）。
+     */
+    fun reorderCards(newOrderIds: List<String>) {
+        val ids = newOrderIds.toSet()
+        val byId = cards.associateBy { it.id }
+        val positions = cards.indices.filter { cards[it].id in ids }
+        if (positions.size != newOrderIds.size) return
+        positions.forEachIndexed { k, pos -> byId[newOrderIds[k]]?.let { cards[pos] = it } }
+        save()
+    }
+
+    /** 依拖曳結果設定資料夾順序 */
+    fun setFolderOrder(order: List<String>) {
+        if (order.toSet() != folders.toSet()) return
+        folders.clear()
+        folders.addAll(order)
+        save()
+    }
+
     fun moveFolder(name: String, delta: Int) {
         val i = folders.indexOf(name)
         val j = i + delta

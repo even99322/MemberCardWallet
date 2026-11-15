@@ -36,6 +36,7 @@ import com.even.membercards.ui.EditScreen
 import com.even.membercards.ui.ListScreen
 import com.even.membercards.ui.LockScreen
 import com.even.membercards.ui.QuickSetupScreen
+import com.even.membercards.ui.ReorderScreen
 import com.even.membercards.ui.SettingsScreen
 import androidx.compose.ui.Modifier
 import com.even.membercards.ui.StoreApps
@@ -55,6 +56,7 @@ sealed interface Screen {
     data object Home : Screen
     data object Settings : Screen
     data object QuickSetup : Screen
+    data object Reorder : Screen
     data object Ledger : Screen
     data object AutoRecord : Screen
     data class LedgerEdit(
@@ -288,6 +290,7 @@ fun App(
             onEdit = { stack.add(Screen.Edit(it)) },
             onAdd = { folder -> stack.add(Screen.Edit(null, folder = folder)) },
             onAddCoupon = { stack.add(Screen.Edit(null, kind = MemberCard.KIND_COUPON)) },
+            onReorder = { stack.add(Screen.Reorder) },
             onOpenSettings = { stack.add(Screen.Settings) },
             onQuickSetup = { stack.add(Screen.QuickSetup) },
             onOpenLedger = { stack.add(Screen.Ledger) },
@@ -322,6 +325,8 @@ fun App(
             prefillMethod = current.method,
             onBack = { pop() },
         )
+
+        Screen.Reorder -> ReorderScreen(repo = repo, settings = settings, onBack = { pop() })
 
         Screen.QuickSetup -> QuickSetupScreen(
             repo = repo,

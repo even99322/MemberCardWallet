@@ -90,6 +90,7 @@ fun ListScreen(
     onEdit: (String) -> Unit,
     onAdd: (folder: String) -> Unit,
     onAddCoupon: () -> Unit,
+    onReorder: () -> Unit,
     onOpenSettings: () -> Unit,
     onQuickSetup: () -> Unit,
     onOpenLedger: () -> Unit,
@@ -132,6 +133,8 @@ fun ListScreen(
         AppSettings.SORT_ADDED -> compareByDescending<MemberCard> { it.createdAt }
         AppSettings.SORT_EXPIRY -> compareBy<MemberCard> { if (it.expiry > 0) it.expiry else Long.MAX_VALUE }
             .thenByDescending { it.lastUsed }
+        // 自訂：維持拖曳排好的順序
+        AppSettings.SORT_MANUAL -> compareBy<MemberCard> { 0 }
         else -> compareByDescending<MemberCard> { it.favorite }
             .thenByDescending { it.lastUsed }
             .thenByDescending { it.createdAt }
@@ -195,6 +198,7 @@ fun ListScreen(
                         }
                     },
                     actions = {
+                        TextButton(onClick = onReorder) { Text("⇅ 排序", color = Hud.TextDim, fontSize = 14.sp) }
                         IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, "設定") }
                     },
                     colors = hudTopBarColors(),
@@ -341,7 +345,7 @@ fun ListScreen(
                     ) {
                         val folderSel = selectedFolder
                         val grouped = folderSel == null && repo.folders.isNotEmpty() && query.isBlank() &&
-                            settings.sortMode == AppSettings.SORT_SMART
+                            (settings.sortMode == AppSettings.SORT_SMART || settings.sortMode == AppSettings.SORT_MANUAL)
                         if (grouped) {
                             repo.folders.toList().forEachIndexed { i, f ->
                                 val group = matchedCards.filter { it.folder == f }

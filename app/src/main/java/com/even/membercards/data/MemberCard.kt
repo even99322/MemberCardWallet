@@ -23,6 +23,9 @@ data class MemberCard(
     val folder: String = "",
     /** 有效期限（UTC 午夜毫秒），0 = 未設定 */
     val expiry: Long = 0L,
+    /** 點數／餘額（自由文字，例如「1,250 點」「$300」） */
+    val points: String = "",
+    val pointsUpdated: Long = 0L,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -40,6 +43,8 @@ data class MemberCard(
         put("link", link)
         put("folder", folder)
         put("expiry", expiry)
+        put("points", points)
+        put("pointsUpdated", pointsUpdated)
     }
 
     companion object {
@@ -59,6 +64,8 @@ data class MemberCard(
             link = o.optString("link"),
             folder = o.optString("folder"),
             expiry = o.optLong("expiry", 0L),
+            points = o.optString("points"),
+            pointsUpdated = o.optLong("pointsUpdated", 0L),
         )
     }
 }

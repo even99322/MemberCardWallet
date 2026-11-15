@@ -185,6 +185,67 @@ fun LedgerChartsTab(ledger: LedgerRepository, month: YearMonth, onMonth: (YearMo
             }
         }
 
+        // 分析：近 6 個月、與上月比較、常用商家
+        item(key = "trend") {
+            val months6 = (5L downTo 0L).map { month.minusMonths(it) }
+            val exp = months6.map { ledger.monthExpense(it) }
+            val inc = months6.map { ledger.monthIncome(it) }
+            HudPanel {
+                Text("TREND // 近 6 個月", style = MonoLabel, color = Hud.TextDim, modifier = Modifier.padding(top = 6.dp))
+                val prev = if (type == EntryType.INCOME) ledger.monthIncome(month.minusMonths(1)) else ledger.monthExpense(month.minusMonths(1))
+                if (prev > 0) {
+                    val diff = (total - prev) / prev * 100
+                    val up = diff >= 0
+                    Text(
+                        "比上月${if (type == EntryType.INCOME) "收入" else "支出"}" +
+                            (if (up) "多 " else "少 ") + String.format(Locale.US, "%.0f%%", kotlin.math.abs(diff)) +
+                            "（${formatNumber(prev)} → ${formatNumber(total)}）",
+                        color = when {
+                            type == EntryType.EXPENSE && up -> Hud.Warn
+                            type == EntryType.EXPENSE -> Hud.Ok
+                            up -> Hud.Ok
+                            else -> Hud.Warn
+                        },
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                }
+                MonthBars(months6, exp, inc, month)
+                Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(Hud.Cyan))
+                    Text(" 支出   ", fontSize = 11.sp, color = Hud.TextDim)
+                    Box(Modifier.size(8.dp).background(Hud.Ok))
+                    Text(" 收入", fontSize = 11.sp, color = Hud.TextDim)
+                }
+            }
+        }
+
+        val topTitles = entries.groupBy { it.title }
+            .map { (k, v) -> Triple(k, v.sumOf { it.amount }, v.size) }
+            .sortedByDescending { it.second }
+            .take(5)
+        if (topTitles.isNotEmpty()) {
+            item(key = "top") {
+                HudPanel {
+                    Text(
+                        if (type == EntryType.INCOME) "TOP // 主要收入來源" else "TOP // 花最多的項目",
+                        style = MonoLabel,
+                        color = Hud.TextDim,
+                        modifier = Modifier.padding(vertical = 6.dp),
+                    )
+                    topTitles.forEachIndexed { i, (name, sum, count) ->
+                        Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${i + 1}", style = MonoLabel, color = Hud.Cyan, modifier = Modifier.width(18.dp))
+                            Text(name, color = Hud.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text("$count 筆  ", style = MonoLabel, color = Hud.TextDim)
+                            Text(formatNumber(sum), fontFamily = Mono, color = Hud.Text, fontSize = 14.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
+        }
+
         // 分類明細
         if (byCat.isEmpty()) {
             item(key = "empty") {
@@ -240,6 +301,36 @@ fun LedgerChartsTab(ledger: LedgerRepository, month: YearMonth, onMonth: (YearMo
                     }
                 }
             }
+        }
+    }
+}
+
+/** 近幾個月支出／收入長條圖 */
+@Composable
+private fun MonthBars(months: List<YearMonth>, exp: List<Double>, inc: List<Double>, selected: YearMonth) {
+    val measurer = rememberTextMeasurer()
+    val maxV = (exp + inc).maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .padding(vertical = 6.dp)
+    ) {
+        val bottom = size.height - 18.dp.toPx()
+        val slot = size.width / months.size
+        val barW = slot * 0.28f
+        val label = TextStyle(color = Hud.TextFaint, fontSize = 9.sp)
+        drawLine(Hud.Line, Offset(0f, bottom), Offset(size.width, bottom), 1f)
+        months.forEachIndexed { i, m ->
+            val cx = slot * i + slot / 2
+            val he = ((exp[i] / maxV) * (bottom - 12.dp.toPx())).toFloat()
+            val hi = ((inc[i] / maxV) * (bottom - 12.dp.toPx())).toFloat()
+            val alpha = if (m == selected) 1f else 0.55f
+            drawRect(Hud.Cyan.copy(alpha = alpha), Offset(cx - barW - 1.dp.toPx(), bottom - he), Size(barW, he))
+            drawRect(Hud.Ok.copy(alpha = alpha), Offset(cx + 1.dp.toPx(), bottom - hi), Size(barW, hi))
+            val t = "${m.monthValue}月"
+            val lw = measurer.measure(t, label).size.width
+            drawText(measurer, t, Offset(cx - lw / 2f, bottom + 3.dp.toPx()), if (m == selected) label.copy(color = Hud.Cyan) else label)
         }
     }
 }

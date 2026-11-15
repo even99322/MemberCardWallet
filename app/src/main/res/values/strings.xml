@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">會員卡夾</string>
+    <string name="widget_desc">手機條碼載具與會員電話，點一下全螢幕顯示</string>
+    <string name="tile_label">載具條碼</string>
 </resources>

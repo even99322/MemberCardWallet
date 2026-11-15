@@ -65,7 +65,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import com.even.membercards.data.AppSettings
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.clip
 import com.even.membercards.data.Barcodes
+import com.even.membercards.data.CardPhotos
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.Shortcuts
 
@@ -83,6 +86,10 @@ fun DetailScreen(
     val clipboard = LocalClipboardManager.current
     var confirmDelete by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
+    var viewPhoto by remember { mutableStateOf<String?>(null) }
+    var editPoints by remember { mutableStateOf(false) }
+    val front = rememberCardPhoto(card.id, CardPhotos.FRONT, 0, 600)
+    val back = rememberCardPhoto(card.id, CardPhotos.BACK, 0, 600)
 
     LaunchedEffect(id) { repo.markUsed(id) }
     if (settings.autoBrightness && card.number.isNotBlank()) KeepScreenBright()
@@ -238,7 +245,56 @@ fun DetailScreen(
                     )
                 }
 
-                Spacer(Modifier.height(22.dp))
+                // 實體卡照片
+                if (front != null || back != null) {
+                    Spacer(Modifier.height(18.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        listOf(CardPhotos.FRONT to front, CardPhotos.BACK to back).forEach { (side, img) ->
+                            if (img != null) {
+                                Image(
+                                    img,
+                                    if (side == CardPhotos.FRONT) "正面" else "背面",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1.586f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, Hud.LineBright, RoundedCornerShape(8.dp))
+                                        .clickable { viewPhoto = side },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 點數／餘額
+                Spacer(Modifier.height(18.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Hud.Violet.copy(alpha = 0.08f))
+                        .border(1.dp, Hud.Violet.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                        .clickable { editPoints = true }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("POINTS // 點數／餘額", style = MonoLabel, color = Hud.Violet)
+                        Text(
+                            card.points.ifBlank { "點此記錄點數或儲值餘額" },
+                            fontFamily = if (card.points.isBlank()) null else Mono,
+                            fontWeight = if (card.points.isBlank()) FontWeight.Normal else FontWeight.Bold,
+                            fontSize = if (card.points.isBlank()) 13.sp else 20.sp,
+                            color = if (card.points.isBlank()) Hud.TextDim else Hud.Text,
+                        )
+                    }
+                    if (card.pointsUpdated > 0) {
+                        Text("${timeAgo(card.pointsUpdated)}更新", fontSize = 11.sp, color = Hud.TextDim)
+                    }
+                }
+
+                Spacer(Modifier.height(18.dp))
                 HudPanel {
                     if (card.number.isNotBlank()) {
                         HudInfoRow("FORMAT", fmt.label)
@@ -279,6 +335,31 @@ fun DetailScreen(
                 onClose = { fullscreen = false },
             )
         }
+        viewPhoto?.let { side -> FullscreenPhoto(card.id, side, onClose = { viewPhoto = null }) }
+    }
+
+    if (editPoints) {
+        var text by remember { mutableStateOf(card.points) }
+        AlertDialog(
+            onDismissRequest = { editPoints = false },
+            title = { Text("點數／餘額") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("例如 1,250 點、$300") },
+                    singleLine = true,
+                    colors = hudFieldColors(),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repo.upsert(card.copy(points = text.trim(), pointsUpdated = System.currentTimeMillis()))
+                    editPoints = false
+                }) { Text("儲存") }
+            },
+            dismissButton = { TextButton(onClick = { editPoints = false }) { Text("取消") } },
+        )
     }
 
     if (confirmDelete) {

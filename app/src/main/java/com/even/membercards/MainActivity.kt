@@ -39,6 +39,11 @@ import com.even.membercards.ui.SettingsScreen
 import androidx.compose.ui.Modifier
 import com.even.membercards.ui.StoreApps
 import com.even.membercards.ui.UpdateDialog
+import com.even.membercards.ui.FullscreenBarcode
+import com.even.membercards.ui.FullscreenPhones
+import com.even.membercards.ui.effectiveCarrier
+import com.even.membercards.data.Barcodes
+import androidx.compose.ui.graphics.asImageBitmap
 import com.even.membercards.ui.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -70,6 +75,8 @@ sealed interface Screen {
 sealed interface Incoming {
     data class OpenCard(val id: String) : Incoming
     data class Shared(val image: Uri?, val text: String?, val subject: String?) : Incoming
+    data object ShowCarrier : Incoming
+    data object ShowPhone : Incoming
 }
 
 class MainActivity : ComponentActivity() {
@@ -129,6 +136,9 @@ class MainActivity : ComponentActivity() {
             Shortcuts.ACTION_OPEN_CARD ->
                 intent.getStringExtra(Shortcuts.EXTRA_CARD_ID)?.let { Incoming.OpenCard(it) }
 
+            CarrierWidget.ACTION_SHOW_CARRIER -> Incoming.ShowCarrier
+            CarrierWidget.ACTION_SHOW_PHONE -> Incoming.ShowPhone
+
             Intent.ACTION_SEND -> {
                 val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
                 if (intent.type?.startsWith("image/") == true) {
@@ -160,6 +170,9 @@ fun App(
         if (stack.size > 1) stack.removeAt(stack.lastIndex)
     }
 
+    var showCarrier by remember { mutableStateOf<String?>(null) }
+    var showPhones by remember { mutableStateOf(false) }
+
     LaunchedEffect(incoming, locked) {
         if (locked) return@LaunchedEffect // 解鎖後才處理捷徑／分享
         when (incoming) {
@@ -183,8 +196,37 @@ fun App(
                 stack.add(Screen.Home)
                 stack.add(Screen.Edit(null, incoming.image, incoming.text, incoming.subject))
             }
+
+            Incoming.ShowCarrier -> {
+                val c = effectiveCarrier(settings, repo)
+                if (c.isBlank()) {
+                    stack.clear()
+                    stack.add(Screen.Home)
+                    stack.add(Screen.QuickSetup)
+                    context.toast("請先設定手機條碼載具")
+                } else {
+                    showCarrier = c
+                }
+            }
+
+            Incoming.ShowPhone -> {
+                if (settings.phones.isEmpty()) {
+                    stack.clear()
+                    stack.add(Screen.Home)
+                    stack.add(Screen.QuickSetup)
+                    context.toast("請先設定電話號碼")
+                } else {
+                    showPhones = true
+                }
+            }
         }
         onIncomingHandled()
+    }
+
+    // 開 App 時補記到期的定期收支
+    LaunchedEffect(Unit) {
+        val n = LedgerRepository.instance(context).runRecurring()
+        if (n > 0) context.toast("已自動記入 $n 筆定期收支")
     }
 
     // 自動檢查更新（啟動時一次），選單也可手動檢查
@@ -297,5 +339,22 @@ fun App(
                 if (current.id == null) stack.add(Screen.Detail(savedId))
             },
         )
+    }
+
+    // 小工具／快速設定磚：全螢幕載具或電話
+    showCarrier?.let { c ->
+        val bmp = remember(c) { runCatching { Barcodes.encode(c, "CODE_39", 1000) }.getOrNull() }
+        if (bmp != null) {
+            FullscreenBarcode(
+                bitmap = bmp.asImageBitmap(),
+                number = c,
+                rotate = true,
+                title = "手機條碼載具",
+                onClose = { showCarrier = null },
+            )
+        }
+    }
+    if (showPhones && settings.phones.isNotEmpty()) {
+        FullscreenPhones(entries = settings.phones, onClose = { showPhones = false })
     }
 }

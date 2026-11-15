@@ -31,6 +31,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -47,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -93,6 +96,15 @@ fun LedgerScreen(
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var monthText by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     val month = YearMonth.parse(monthText)
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val context = LocalContext.current
+
+    // 進記帳頁時補記到期的定期收支
+    LaunchedEffect(Unit) {
+        val n = ledger.runRecurring()
+        if (n > 0) context.toast("已自動記入 $n 筆定期收支")
+    }
 
     Box(
         Modifier
@@ -129,6 +141,16 @@ fun LedgerScreen(
                     navigationIcon = {
                         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                     },
+                    actions = {
+                        if (tab == 0) {
+                            IconButton(onClick = {
+                                searchOpen = !searchOpen
+                                if (!searchOpen) query = ""
+                            }) {
+                                Icon(if (searchOpen) Icons.Filled.Close else Icons.Filled.Search, "搜尋")
+                            }
+                        }
+                    },
                     colors = hudTopBarColors(),
                 )
             },
@@ -146,6 +168,9 @@ fun LedgerScreen(
                     else -> LedgerDetailTab(
                         ledger = ledger,
                         settings = settings,
+                        searchOpen = searchOpen,
+                        query = query,
+                        onQuery = { query = it },
                         month = month,
                         onMonth = { monthText = it.toString() },
                         onEdit = onEdit,
@@ -277,6 +302,9 @@ fun MonthBox(month: YearMonth, months: List<YearMonth>, onMonth: (YearMonth) -> 
 private fun LedgerDetailTab(
     ledger: LedgerRepository,
     settings: AppSettings,
+    searchOpen: Boolean,
+    query: String,
+    onQuery: (String) -> Unit,
     month: YearMonth,
     onMonth: (YearMonth) -> Unit,
     onEdit: (String) -> Unit,
@@ -284,7 +312,8 @@ private fun LedgerDetailTab(
 ) {
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
-    val list = ledger.monthEntries(month).sortedByDescending { it.time }
+    val searching = searchOpen && query.isNotBlank()
+    val list = if (searching) ledger.search(query) else ledger.monthEntries(month).sortedByDescending { it.time }
     val expense = list.filter { it.isExpense }.sumOf { it.amount }
     val income = list.filter { it.isIncome }.sumOf { it.amount }
     val byDay = list.groupBy { it.localDate(zone) }.entries.sortedByDescending { it.key }
@@ -296,7 +325,31 @@ private fun LedgerDetailTab(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "header") {
+        if (searchOpen) {
+            item(key = "search") {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQuery,
+                    placeholder = { Text("搜尋備註、商家、分類、帳戶或金額", color = Hud.TextFaint) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = hudFieldColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (searching) {
+                item(key = "searchSummary") {
+                    Text(
+                        "找到 ${list.size} 筆（所有月份）  ·  支出 ${formatNumber(expense)}  ·  收入 ${formatNumber(income)}",
+                        style = MonoLabel,
+                        color = Hud.Cyan,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                }
+            }
+        }
+
+        if (!searching) item(key = "header") {
             HudPanel {
                 Row(
                     Modifier.padding(vertical = 6.dp),
@@ -340,7 +393,7 @@ private fun LedgerDetailTab(
             }
         }
 
-        if (!autoOn) {
+        if (!autoOn && !searching) {
             item(key = "auto") {
                 Row(
                     Modifier
@@ -361,7 +414,7 @@ private fun LedgerDetailTab(
         if (list.isEmpty()) {
             item(key = "empty") {
                 Text(
-                    "NO RECORDS // 這個月還沒有記帳\n按下方「＋」記一筆",
+                    if (searching) "NO MATCH // 找不到符合的紀錄" else "NO RECORDS // 這個月還沒有記帳\n按下方「＋」記一筆",
                     color = Hud.TextDim,
                     fontSize = 13.sp,
                     lineHeight = 20.sp,
@@ -459,6 +512,10 @@ private fun EntryRow(ledger: LedgerRepository, e: LedgerEntry, zone: ZoneId, onC
             HudTag("AUTO", Hud.Ok)
             Spacer(Modifier.width(8.dp))
         }
+        if (e.isRecurring) {
+            HudTag("定期", Hud.Violet)
+            Spacer(Modifier.width(8.dp))
+        }
         Text(
             when {
                 e.isIncome -> "+" + formatNumber(e.amount)
@@ -485,6 +542,7 @@ private fun LedgerSettingsTab(ledger: LedgerRepository, settings: AppSettings, o
     var budgetDialog by remember { mutableStateOf(false) }
     var accountDialog by remember { mutableStateOf(false) }
     var categoryDialog by remember { mutableStateOf(false) }
+    var recurringDialog by remember { mutableStateOf(false) }
 
     val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) {
@@ -533,6 +591,12 @@ private fun LedgerSettingsTab(ledger: LedgerRepository, settings: AppSettings, o
             }
             HudDivider()
             SettingRow("分類管理", "新增自訂分類（${ledger.customCategories.size} 個）") { categoryDialog = true }
+            HudDivider()
+            SettingRow(
+                "定期收支",
+                if (ledger.recurring.isEmpty()) "訂閱、房租、薪水每月自動記一筆"
+                else "${ledger.recurring.count { it.enabled }} 筆啟用中",
+            ) { recurringDialog = true }
         }
         HudPanel {
             SettingRow(
@@ -584,6 +648,9 @@ private fun LedgerSettingsTab(ledger: LedgerRepository, settings: AppSettings, o
     }
     if (categoryDialog) {
         CategoryManagerDialog(ledger, onDismiss = { categoryDialog = false })
+    }
+    if (recurringDialog) {
+        RecurringManagerDialog(ledger, onDismiss = { recurringDialog = false })
     }
 }
 

@@ -64,7 +64,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.mutableIntStateOf
 import com.even.membercards.data.Barcodes
+import com.even.membercards.data.CardPhotos
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.MemberCard
 import com.journeyapps.barcodescanner.ScanContract
@@ -105,6 +108,17 @@ fun EditScreen(
     var formatMenu by remember { mutableStateOf(false) }
     var datePicker by remember { mutableStateOf(false) }
     var decoding by remember { mutableStateOf(false) }
+    var points by rememberSaveable { mutableStateOf(existing?.points ?: "") }
+    // 新卡片先決定 id，照片才能先存
+    val draftId = rememberSaveable { existing?.id ?: java.util.UUID.randomUUID().toString() }
+    var photoVersion by remember { mutableIntStateOf(0) }
+    var saved by remember { mutableStateOf(false) }
+
+    fun cancel() {
+        if (existing == null && !saved) CardPhotos.deleteAll(context, draftId)
+        onBack()
+    }
+    BackHandler { cancel() }
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         val contents = result.contents
@@ -167,7 +181,7 @@ fun EditScreen(
                 context.toast("請輸入會員號碼，或連結店家 App")
             error != null -> context.toast(error)
             else -> {
-                val base = existing ?: MemberCard(name = name.trim(), number = trimmed)
+                val base = existing ?: MemberCard(id = draftId, name = name.trim(), number = trimmed)
                 val card = base.copy(
                     name = name.trim(),
                     number = trimmed,
@@ -179,7 +193,11 @@ fun EditScreen(
                     link = link.trim(),
                     folder = folder,
                     expiry = expiry,
+                    points = points.trim(),
+                    pointsUpdated = if (points.trim() != (existing?.points ?: "")) System.currentTimeMillis()
+                    else existing?.pointsUpdated ?: 0L,
                 )
+                saved = true
                 repo.upsert(card)
                 onSaved(card.id)
             }
@@ -208,7 +226,7 @@ fun EditScreen(
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                        IconButton(onClick = { cancel() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                     },
                     actions = {
                         IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, "儲存", tint = Hud.Cyan) }
@@ -448,6 +466,27 @@ fun EditScreen(
                     shape = fieldShape,
                     colors = hudFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
+                )
+
+                // 06 點數與照片
+                HudSection("06", "點數與實體卡照片")
+                OutlinedTextField(
+                    value = points,
+                    onValueChange = { points = it },
+                    label = { Text("點數／餘額（選填，例如 1,250 點、$300）") },
+                    singleLine = true,
+                    shape = fieldShape,
+                    colors = hudFieldColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PhotoSlot("正面", draftId, CardPhotos.FRONT, photoVersion, { photoVersion++ }, Modifier.weight(1f))
+                    PhotoSlot("背面", draftId, CardPhotos.BACK, photoVersion, { photoVersion++ }, Modifier.weight(1f))
+                }
+                Text(
+                    "照片只存在這支手機，不包含在備份檔中。",
+                    color = Hud.TextFaint,
+                    fontSize = 11.sp,
                 )
 
                 Spacer(Modifier.height(4.dp))

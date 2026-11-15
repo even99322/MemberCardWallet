@@ -13,6 +13,7 @@ data class QuickApp(val pkg: String, val label: String)
 
 /** 使用者設定（SharedPreferences + Compose 狀態，改了畫面會即時更新）。 */
 class AppSettings private constructor(context: Context) {
+    private val appContext = context.applicationContext
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
     private val lockState = mutableStateOf(prefs.getBoolean(K_LOCK, false))
@@ -57,6 +58,7 @@ class AppSettings private constructor(context: Context) {
         set(v) {
             carrierState.value = v
             prefs.edit().putString(K_CARRIER, v).apply()
+            com.even.membercards.CarrierWidget.updateAll(appContext)
         }
 
     /** 會員電話號碼清單；第一個是主要號碼，其餘為備選 */
@@ -66,6 +68,7 @@ class AppSettings private constructor(context: Context) {
             val clean = v.filter { it.number.isNotBlank() }
             phonesState.value = clean
             prefs.edit().putString(K_PHONES, phonesToJson(clean).toString()).apply()
+            com.even.membercards.CarrierWidget.updateAll(appContext)
         }
 
     private fun loadPhones(): List<PhoneEntry> {

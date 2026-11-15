@@ -72,6 +72,7 @@ class CardRepository private constructor(private val context: Context) {
             tmp.delete()
         }
         Shortcuts.updateDynamic(context, cards.toList())
+        com.even.membercards.CarrierWidget.updateAll(context)
     }
 
     fun get(id: String): MemberCard? = cards.firstOrNull { it.id == id }
@@ -88,6 +89,7 @@ class CardRepository private constructor(private val context: Context) {
         cards.removeAll { it.id == id }
         save()
         Shortcuts.remove(context, id)
+        CardPhotos.deleteAll(context, id)
     }
 
     fun addAll(newCards: List<MemberCard>) {

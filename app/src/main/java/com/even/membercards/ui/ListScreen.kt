@@ -596,6 +596,7 @@ private fun CardItem(
                         modifier = Modifier.weight(1f),
                     )
                     if (badge != null) HudTag(badge.first, badge.second)
+                    else if (card.points.isNotBlank()) HudTag(card.points.take(10), Hud.Violet)
                 }
             }
         }

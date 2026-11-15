@@ -38,6 +38,7 @@ data class LedgerEntry(
     val toAccount: String = "",
 ) {
     val isAuto: Boolean get() = source == "auto"
+    val isRecurring: Boolean get() = source == "recurring"
     val isExpense: Boolean get() = type == EntryType.EXPENSE
     val isIncome: Boolean get() = type == EntryType.INCOME
     val isTransfer: Boolean get() = type == EntryType.TRANSFER
@@ -222,6 +223,41 @@ fun formatMoney(v: Double): String =
 fun formatNumber(v: Double): String =
     if (v == Math.floor(v)) String.format(Locale.US, "%,.0f", v) else String.format(Locale.US, "%,.2f", v)
 
+/** 定期收支：每月固定日期自動記一筆（訂閱、房租、薪水…）。 */
+data class Recurring(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val type: String = EntryType.EXPENSE,
+    val category: String = "訂閱",
+    val amount: Double,
+    val account: String = "",
+    /** 每月幾號（1–31，月份天數不足時記在月底） */
+    val day: Int = 1,
+    val enabled: Boolean = true,
+    /** 最後一次已處理的月份（YearMonth 字串），空字串代表從 startMonth 開始 */
+    val lastMonth: String = "",
+    val startMonth: String = YearMonth.now().toString(),
+) {
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("title", title).put("type", type)
+        .put("category", category).put("amount", amount).put("account", account).put("day", day)
+        .put("enabled", enabled).put("lastMonth", lastMonth).put("startMonth", startMonth)
+
+    companion object {
+        fun fromJson(o: JSONObject) = Recurring(
+            id = o.optString("id").ifBlank { UUID.randomUUID().toString() },
+            title = o.optString("title"),
+            type = o.optString("type", EntryType.EXPENSE),
+            category = o.optString("category", "其他"),
+            amount = o.optDouble("amount", 0.0),
+            account = o.optString("account"),
+            day = o.optInt("day", 1).coerceIn(1, 31),
+            enabled = o.optBoolean("enabled", true),
+            lastMonth = o.optString("lastMonth"),
+            startMonth = o.optString("startMonth", YearMonth.now().toString()),
+        )
+    }
+}
+
 /** 收到的付款通知（不論是否成功解析），讓使用者檢查與補記。 */
 data class CapturedNotice(
     val time: Long,
@@ -253,6 +289,7 @@ class LedgerRepository private constructor(context: Context) {
     val captures = mutableStateListOf<CapturedNotice>()
     val accounts = mutableStateListOf<Account>()
     val customCategories = mutableStateListOf<Category>()
+    val recurring = mutableStateListOf<Recurring>()
 
     private val defaultAccountState = mutableStateOf("")
     private val autoPopupState = mutableStateOf(false)
@@ -317,6 +354,10 @@ class LedgerRepository private constructor(context: Context) {
             customCategories.clear()
             customCategories.addAll((0 until arr.length()).map { Category.fromJson(arr.getJSONObject(it)) })
         }
+        o.optJSONArray("recurring")?.let { arr ->
+            recurring.clear()
+            recurring.addAll((0 until arr.length()).map { Recurring.fromJson(arr.getJSONObject(it)) })
+        }
         defaultAccountState.value = o.optString("defaultAccount")
         autoPopupState.value = o.optBoolean("autoPopupAccount", false)
     }
@@ -326,9 +367,12 @@ class LedgerRepository private constructor(context: Context) {
         accounts.forEach { acc.put(it.toJson()) }
         val cats = JSONArray()
         customCategories.forEach { cats.put(it.toJson()) }
+        val rec = JSONArray()
+        recurring.forEach { rec.put(it.toJson()) }
         return JSONObject()
             .put("accounts", acc)
             .put("categories", cats)
+            .put("recurring", rec)
             .put("defaultAccount", defaultAccountState.value)
             .put("autoPopupAccount", autoPopupState.value)
     }
@@ -412,6 +456,89 @@ class LedgerRepository private constructor(context: Context) {
     fun clearCaptures() {
         captures.clear()
         saveCaptures()
+    }
+
+    // ---------- 定期收支 ----------
+
+    fun upsertRecurring(r: Recurring) {
+        val i = recurring.indexOfFirst { it.id == r.id }
+        if (i >= 0) recurring[i] = r else recurring.add(r)
+        saveMeta()
+    }
+
+    fun deleteRecurring(id: String) {
+        recurring.removeAll { it.id == id }
+        saveMeta()
+    }
+
+    /**
+     * 補記所有已到期的定期收支（每月一次，不會重複）。回傳新增筆數。
+     * 開 App、開記帳頁時呼叫即可。
+     */
+    fun runRecurring(): Int {
+        val today = LocalDate.now()
+        val now = YearMonth.now()
+        val zone = ZoneId.systemDefault()
+        var added = 0
+        for (idx in recurring.indices) {
+            var r = recurring[idx]
+            if (!r.enabled || r.amount <= 0) continue
+            var m = if (r.lastMonth.isBlank()) {
+                runCatching { YearMonth.parse(r.startMonth) }.getOrDefault(now)
+            } else {
+                runCatching { YearMonth.parse(r.lastMonth).plusMonths(1) }.getOrDefault(now)
+            }
+            var guard = 0
+            while (!m.isAfter(now) && guard++ < 36) {
+                val due = m.atDay(r.day.coerceAtMost(m.lengthOfMonth()))
+                if (due.isAfter(today)) break
+                val key = "rec:${r.id}:$m"
+                if (entries.none { it.key == key }) {
+                    entries.add(
+                        LedgerEntry(
+                            time = due.atTime(9, 0).atZone(zone).toInstant().toEpochMilli(),
+                            amount = r.amount,
+                            category = r.category,
+                            note = r.title,
+                            source = "recurring",
+                            key = key,
+                            type = r.type,
+                            account = r.account,
+                        )
+                    )
+                    added++
+                }
+                r = r.copy(lastMonth = m.toString())
+                m = m.plusMonths(1)
+            }
+            if (r != recurring[idx]) recurring[idx] = r
+        }
+        if (added > 0) save()
+        saveMeta()
+        return added
+    }
+
+    /** 下一次扣款／入帳日 */
+    fun nextDue(r: Recurring): LocalDate {
+        val start = if (r.lastMonth.isBlank()) {
+            runCatching { YearMonth.parse(r.startMonth) }.getOrDefault(YearMonth.now())
+        } else {
+            runCatching { YearMonth.parse(r.lastMonth).plusMonths(1) }.getOrDefault(YearMonth.now())
+        }
+        return start.atDay(r.day.coerceAtMost(start.lengthOfMonth()))
+    }
+
+    // ---------- 搜尋 ----------
+
+    fun search(query: String): List<LedgerEntry> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        val amount = q.replace(",", "").toDoubleOrNull()
+        return entries.filter { e ->
+            e.note.contains(q, true) || e.merchant.contains(q, true) || e.category.contains(q, true) ||
+                (account(e.account)?.name?.contains(q, true) == true) ||
+                (amount != null && e.amount == amount)
+        }.sortedByDescending { it.time }
     }
 
     // ---------- 統計 ----------

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="10dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.15"
+            android:text="CARRIER // 載具"
+            android:textColor="#38E8FF"
+            android:textSize="10sp" />
+
+        <TextView
+            android:id="@+id/widget_phone"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text=""
+            android:textColor="#E4EDF8"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/widget_barcode_box"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="6dp"
+        android:layout_weight="1"
+        android:background="@drawable/widget_white"
+        android:padding="6dp">
+
+        <ImageView
+            android:id="@+id/widget_barcode"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="載具條碼"
+            android:scaleType="fitXY" />
+
+        <TextView
+            android:id="@+id/widget_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="點此設定手機條碼載具"
+            android:textColor="#555555"
+            android:textSize="13sp"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/widget_carrier"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:fontFamily="monospace"
+        android:gravity="center"
+        android:letterSpacing="0.2"
+        android:text=""
+        android:textColor="#E4EDF8"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+</LinearLayout>

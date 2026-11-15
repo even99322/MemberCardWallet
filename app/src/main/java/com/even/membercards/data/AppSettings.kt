@@ -28,6 +28,15 @@ class AppSettings private constructor(context: Context) {
     private val captureOtherState = mutableStateOf(prefs.getBoolean(K_CAPTURE_OTHER, false))
     private val budgetState = mutableStateOf(prefs.getLong(K_BUDGET, 0L))
     private val remindersState = mutableStateOf(prefs.getBoolean(K_REMINDERS, true))
+    private val carrierOnCardState = mutableStateOf(prefs.getBoolean(K_CARRIER_ON_CARD, true))
+
+    /** 卡片頁上方同時顯示載具條碼 */
+    var carrierOnCard: Boolean
+        get() = carrierOnCardState.value
+        set(v) {
+            carrierOnCardState.value = v
+            prefs.edit().putBoolean(K_CARRIER_ON_CARD, v).apply()
+        }
 
     /** 到期、定期扣款、預算提醒通知 */
     var reminders: Boolean
@@ -197,6 +206,7 @@ class AppSettings private constructor(context: Context) {
         private const val K_CAPTURE_OTHER = "capture_other_pay"
         private const val K_BUDGET = "monthly_budget"
         private const val K_REMINDERS = "reminders"
+        private const val K_CARRIER_ON_CARD = "carrier_on_card"
         private const val K_SENT = "reminders_sent"
 
         private fun phonesToJson(list: List<PhoneEntry>): JSONArray {

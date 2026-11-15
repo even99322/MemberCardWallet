@@ -88,12 +88,18 @@ fun DetailScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
     var viewPhoto by remember { mutableStateOf<String?>(null) }
+    var carrierFull by remember { mutableStateOf(false) }
+    // 上方載具條碼（票券不顯示）
+    val carrier = if (settings.carrierOnCard && !card.isCoupon) effectiveCarrier(settings, repo) else ""
+    val carrierBmp = remember(carrier) {
+        if (carrier.isBlank()) null else runCatching { Barcodes.encode(carrier, "CODE_39", 1000) }.getOrNull()
+    }
     var editPoints by remember { mutableStateOf(false) }
     val front = rememberCardPhoto(card.id, CardPhotos.FRONT, 0, 600)
     val back = rememberCardPhoto(card.id, CardPhotos.BACK, 0, 600)
 
     LaunchedEffect(id) { repo.markUsed(id) }
-    if (settings.autoBrightness && card.number.isNotBlank()) KeepScreenBright()
+    if (settings.autoBrightness && (card.number.isNotBlank() || carrierBmp != null)) KeepScreenBright()
 
     val accent = accentOf(card.color)
     val fmt = Barcodes.find(card.format)
@@ -143,6 +149,42 @@ fun DetailScreen(
                     .padding(horizontal = 20.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                // 載具條碼（在會員條碼上方，店員可一次掃完）
+                if (carrierBmp != null) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Hud.Surface.copy(alpha = 0.9f))
+                            .border(1.dp, Hud.Violet.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                            .clickable { carrierFull = true }
+                            .padding(10.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("CARRIER // 載具", style = MonoLabel, color = Hud.Violet, modifier = Modifier.weight(1f))
+                            Text(carrier, fontFamily = Mono, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, letterSpacing = 1.sp, color = Hud.Text)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(Color.White, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            Image(
+                                bitmap = carrierBmp.asImageBitmap(),
+                                contentDescription = "載具條碼",
+                                contentScale = ContentScale.FillBounds,
+                                filterQuality = FilterQuality.None,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(64.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+
                 // 標頭
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     CardGlyph(card, 48.dp)
@@ -359,6 +401,15 @@ fun DetailScreen(
             )
         }
         viewPhoto?.let { side -> FullscreenPhoto(card.id, side, onClose = { viewPhoto = null }) }
+        if (carrierFull && carrierBmp != null) {
+            FullscreenBarcode(
+                bitmap = carrierBmp.asImageBitmap(),
+                number = carrier,
+                rotate = true,
+                title = "手機條碼載具",
+                onClose = { carrierFull = false },
+            )
+        }
     }
 
     if (editPoints) {

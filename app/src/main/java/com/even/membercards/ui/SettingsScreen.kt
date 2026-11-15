@@ -208,6 +208,13 @@ fun SettingsScreen(
                         checked = settings.autoBrightness,
                         onChange = { settings.autoBrightness = it },
                     )
+                    HudDivider()
+                    SwitchRow(
+                        title = "卡片頁上方顯示載具",
+                        desc = "出示會員條碼時，上方同時顯示手機條碼載具，店員可一次掃完",
+                        checked = settings.carrierOnCard,
+                        onChange = { settings.carrierOnCard = it },
+                    )
                 }
 
                 HudSection("03", "資料")

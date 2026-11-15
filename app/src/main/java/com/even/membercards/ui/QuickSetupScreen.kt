@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.even.membercards.data.AppSettings
 import com.even.membercards.data.CardRepository
+import com.even.membercards.data.PhoneEntry
 import com.even.membercards.data.QuickApp
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -69,13 +70,17 @@ fun QuickSetupScreen(
     val context = LocalContext.current
     val detected = remember { effectiveCarrier(settings, repo) }
     var carrier by rememberSaveable { mutableStateOf(settings.carrier.ifBlank { detected }) }
-    var phone by rememberSaveable { mutableStateOf(settings.phone) }
+    val phones = remember {
+        mutableStateListOf<PhoneEntry>().apply {
+            addAll(settings.phones)
+            if (isEmpty()) add(PhoneEntry("本人", ""))
+        }
+    }
     val apps = remember { mutableStateListOf<QuickApp>().apply { addAll(settings.payApps) } }
     var picking by remember { mutableStateOf(false) }
 
     val carrierTrim = carrier.trim().uppercase()
     val carrierError = carrierTrim.isNotEmpty() && !AppSettings.CARRIER_REGEX.matches(carrierTrim)
-    val phoneDigits = phone.filter { it.isDigit() || it == '+' }
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         result.contents?.let {
@@ -90,7 +95,9 @@ fun QuickSetupScreen(
             return
         }
         settings.carrier = carrierTrim
-        settings.phone = phoneDigits
+        settings.phones = phones.map { p ->
+            PhoneEntry(p.label.trim(), p.number.filter { it.isDigit() || it == '+' })
+        }
         settings.payApps = apps.toList()
         context.toast("快捷列已更新")
         onBack()
@@ -171,19 +178,67 @@ fun QuickSetupScreen(
                     Text("已從你的卡片自動帶入載具號碼", color = Hud.Ok, fontSize = 12.sp)
                 }
 
-                HudSection("02", "手機號碼")
-                Text("很多店家用手機號碼查會員，點快捷列上的號碼會放大給店員看。", color = Hud.TextDim, fontSize = 12.sp)
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("手機號碼") },
-                    placeholder = { Text("0912345678", color = Hud.TextFaint) },
-                    singleLine = true,
-                    textStyle = MonoLabel.copy(fontSize = 17.sp, letterSpacing = 2.sp, color = Hud.Text),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = hudFieldColors(),
-                    modifier = Modifier.fillMaxWidth(),
+                HudSection("02", "電話號碼")
+                Text(
+                    "很多店家用電話查會員。第一個是主要號碼（顯示在快捷列），其他是備選；全螢幕時可切換。",
+                    color = Hud.TextDim,
+                    fontSize = 12.sp,
+                )
+                phones.forEachIndexed { i, entry ->
+                    HudPanel {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (i == 0) "PRIMARY // 主要" else "BACKUP ${i.toString().padStart(2, '0')} // 備選",
+                                style = MonoLabel,
+                                color = if (i == 0) Hud.Cyan else Hud.TextDim,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { phones.add(i - 1, phones.removeAt(i)) },
+                                enabled = i > 0,
+                            ) { Icon(Icons.Filled.KeyboardArrowUp, "上移（設為主要請移到第一個）") }
+                            IconButton(
+                                onClick = { phones.add(i + 1, phones.removeAt(i)) },
+                                enabled = i < phones.lastIndex,
+                            ) { Icon(Icons.Filled.KeyboardArrowDown, "下移") }
+                            IconButton(onClick = { phones.removeAt(i) }) {
+                                Icon(Icons.Filled.Close, "刪除這組號碼", tint = Hud.TextDim)
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = entry.label,
+                                onValueChange = { phones[i] = entry.copy(label = it) },
+                                label = { Text("標籤") },
+                                placeholder = { Text("本人", color = Hud.TextFaint) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = hudFieldColors(),
+                                modifier = Modifier.weight(0.38f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedTextField(
+                                value = entry.number,
+                                onValueChange = { phones[i] = entry.copy(number = it) },
+                                label = { Text("號碼") },
+                                placeholder = { Text("0912345678", color = Hud.TextFaint) },
+                                singleLine = true,
+                                textStyle = MonoLabel.copy(fontSize = 16.sp, letterSpacing = 1.sp, color = Hud.Text),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = hudFieldColors(),
+                                modifier = Modifier.weight(0.62f),
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
+                HudButton(
+                    text = if (phones.isEmpty()) "＋ 新增電話號碼" else "＋ 新增備選號碼",
+                    onClick = { phones.add(PhoneEntry(if (phones.isEmpty()) "本人" else "", "")) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
                 )
 
                 HudSection("03", "常用付款 App")

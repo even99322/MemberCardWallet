@@ -96,7 +96,7 @@ fun ListScreen(
     var movingCard by remember { mutableStateOf<MemberCard?>(null) }
     var deletingCard by remember { mutableStateOf<MemberCard?>(null) }
     var showCarrier by remember { mutableStateOf<String?>(null) }
-    var showPhone by remember { mutableStateOf<String?>(null) }
+    var showPhones by remember { mutableStateOf(false) }
 
     val sel = selectedFolder
     if (sel != null && sel != UNCATEGORIZED && sel !in repo.folders) selectedFolder = null
@@ -239,7 +239,7 @@ fun ListScreen(
                         repo = repo,
                         onSetup = onQuickSetup,
                         onShowCarrier = { showCarrier = it },
-                        onShowPhone = { showPhone = it },
+                        onShowPhones = { showPhones = true },
                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
                     )
                 }
@@ -361,8 +361,8 @@ fun ListScreen(
             context.toast("載具號碼格式不正確，請到快捷列設定修改")
         }
     }
-    showPhone?.let { p ->
-        FullscreenText(title = "會員手機號碼", text = formatPhone(p), onClose = { showPhone = null })
+    if (showPhones && settings.phones.isNotEmpty()) {
+        FullscreenPhones(entries = settings.phones, onClose = { showPhones = false })
     }
 
     if (showBindApps) {

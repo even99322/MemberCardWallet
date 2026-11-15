@@ -65,12 +65,13 @@ fun QuickBar(
     repo: CardRepository,
     onSetup: () -> Unit,
     onShowCarrier: (String) -> Unit,
-    onShowPhone: (String) -> Unit,
+    onShowPhones: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val carrier = effectiveCarrier(settings, repo)
-    val phone = settings.phone
+    val phones = settings.phones
+    val phone = phones.firstOrNull()?.number ?: ""
     val collapsed = settings.quickCollapsed
 
     Column(
@@ -155,7 +156,7 @@ fun QuickBar(
                 QuickTile(
                     label = "PHONE // 手機",
                     modifier = Modifier.weight(1f),
-                    onClick = { if (phone.isBlank()) onSetup() else onShowPhone(phone) },
+                    onClick = { if (phone.isBlank()) onSetup() else onShowPhones() },
                 ) {
                     if (phone.isBlank()) {
                         Text("＋ 設定手機號碼", color = Hud.TextDim, fontSize = 13.sp)
@@ -169,7 +170,12 @@ fun QuickBar(
                             color = Hud.Text,
                             maxLines = 1,
                         )
-                        Text("點一下放大", fontSize = 10.sp, color = Hud.TextFaint)
+                        Text(
+                            if (phones.size > 1) "備選 +${phones.size - 1} · 點一下放大" else "點一下放大",
+                            fontSize = 10.sp,
+                            color = if (phones.size > 1) Hud.Cyan else Hud.TextFaint,
+                            maxLines = 1,
+                        )
                     }
                 }
             }

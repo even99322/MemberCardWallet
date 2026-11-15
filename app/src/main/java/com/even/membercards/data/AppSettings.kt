@@ -5,6 +5,9 @@ import androidx.compose.runtime.mutableStateOf
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** 一組電話號碼（標籤例如：本人、家裡、媽媽） */
+data class PhoneEntry(val label: String, val number: String)
+
 /** 快捷列上的付款 App */
 data class QuickApp(val pkg: String, val label: String)
 
@@ -17,7 +20,7 @@ class AppSettings private constructor(context: Context) {
     private val sortState = mutableStateOf(prefs.getString(K_SORT, SORT_SMART) ?: SORT_SMART)
     private val brightState = mutableStateOf(prefs.getBoolean(K_BRIGHT, true))
     private val carrierState = mutableStateOf(prefs.getString(K_CARRIER, "") ?: "")
-    private val phoneState = mutableStateOf(prefs.getString(K_PHONE, "") ?: "")
+    private val phonesState = mutableStateOf(loadPhones())
     private val payState = mutableStateOf(parseApps(prefs.getString(K_PAY, null)))
     private val quickCollapsedState = mutableStateOf(prefs.getBoolean(K_QUICK_COLLAPSED, false))
 
@@ -29,13 +32,22 @@ class AppSettings private constructor(context: Context) {
             prefs.edit().putString(K_CARRIER, v).apply()
         }
 
-    /** 常用手機號碼（結帳報會員用） */
-    var phone: String
-        get() = phoneState.value
+    /** 會員電話號碼清單；第一個是主要號碼，其餘為備選 */
+    var phones: List<PhoneEntry>
+        get() = phonesState.value
         set(v) {
-            phoneState.value = v
-            prefs.edit().putString(K_PHONE, v).apply()
+            val clean = v.filter { it.number.isNotBlank() }
+            phonesState.value = clean
+            prefs.edit().putString(K_PHONES, phonesToJson(clean).toString()).apply()
         }
+
+    private fun loadPhones(): List<PhoneEntry> {
+        val raw = prefs.getString(K_PHONES, null)
+        if (raw != null) return parsePhones(raw)
+        // 舊版只有一個號碼
+        val legacy = prefs.getString(K_PHONE, "") ?: ""
+        return if (legacy.isBlank()) emptyList() else listOf(PhoneEntry("主要", legacy))
+    }
 
     /** 快捷列的常用付款 App（依顯示順序） */
     var payApps: List<QuickApp>
@@ -55,12 +67,19 @@ class AppSettings private constructor(context: Context) {
     /** 匯出備份用 */
     fun quickJson(): JSONObject = JSONObject()
         .put("carrier", carrier)
-        .put("phone", phone)
+        .put("phone", phones.firstOrNull()?.number ?: "")
+        .put("phones", phonesToJson(phones))
         .put("payApps", appsToJson(payApps))
 
     fun applyQuickJson(o: JSONObject) {
         o.optString("carrier").takeIf { it.isNotBlank() }?.let { carrier = it }
-        o.optString("phone").takeIf { it.isNotBlank() }?.let { phone = it }
+        val arr = o.optJSONArray("phones")
+        if (arr != null) {
+            val list = parsePhones(arr.toString())
+            if (list.isNotEmpty()) phones = list
+        } else {
+            o.optString("phone").takeIf { it.isNotBlank() }?.let { phones = listOf(PhoneEntry("主要", it)) }
+        }
         o.optJSONArray("payApps")?.let { arr ->
             val list = parseApps(arr.toString())
             if (list.isNotEmpty()) payApps = list
@@ -120,6 +139,22 @@ class AppSettings private constructor(context: Context) {
         private const val K_BRIGHT = "bright"
         private const val K_CARRIER = "carrier"
         private const val K_PHONE = "phone"
+        private const val K_PHONES = "phones"
+
+        private fun phonesToJson(list: List<PhoneEntry>): JSONArray {
+            val arr = JSONArray()
+            list.forEach { arr.put(JSONObject().put("label", it.label).put("number", it.number)) }
+            return arr
+        }
+
+        private fun parsePhones(text: String): List<PhoneEntry> = runCatching {
+            val arr = JSONArray(text)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                val n = o.optString("number")
+                if (n.isBlank()) null else PhoneEntry(o.optString("label"), n)
+            }
+        }.getOrDefault(emptyList())
         private const val K_PAY = "pay_apps"
         private const val K_QUICK_COLLAPSED = "quick_collapsed"
 

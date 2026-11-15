@@ -20,7 +20,15 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import com.even.membercards.data.PhoneEntry
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -140,6 +148,73 @@ fun FullscreenText(title: String, text: String, onClose: () -> Unit) {
         }
         Text(
             "點任意處關閉",
+            color = Color.Gray,
+            fontSize = 12.sp,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 32.dp),
+        )
+    }
+}
+
+/** 全螢幕電話號碼（橫向大字）；有多個號碼時下方可切換。 */
+@Composable
+fun FullscreenPhones(entries: List<PhoneEntry>, startIndex: Int = 0, onClose: () -> Unit) {
+    BackHandler { onClose() }
+    KeepScreenBright()
+    var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (entries.size - 1).coerceAtLeast(0))) }
+    val entry = entries.getOrNull(index) ?: return
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .background(Color.White)
+            .clickable(onClick = onClose),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier
+                .requiredSize(width = maxHeight * 0.9f, height = maxWidth * 0.84f)
+                .rotate(90f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                entry.label.ifBlank { if (index == 0) "會員手機號碼" else "備選號碼" },
+                color = Color.DarkGray,
+                fontSize = 20.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                formatPhone(entry.number),
+                fontFamily = Mono,
+                fontWeight = FontWeight.Bold,
+                fontSize = 60.sp,
+                letterSpacing = 4.sp,
+                color = Color.Black,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+            )
+            if (entries.size > 1) {
+                Spacer(Modifier.height(24.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    entries.forEachIndexed { i, e ->
+                        val sel = i == index
+                        Text(
+                            e.label.ifBlank { if (i == 0) "主要" else "備選 $i" },
+                            color = if (sel) Color.White else Color.Black,
+                            fontSize = 16.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(if (sel) Color.Black else Color(0xFFEDEDED))
+                                .clickable { index = i }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            if (entries.size > 1) "點標籤切換號碼 · 點其他地方關閉" else "點任意處關閉",
             color = Color.Gray,
             fontSize = 12.sp,
             modifier = Modifier

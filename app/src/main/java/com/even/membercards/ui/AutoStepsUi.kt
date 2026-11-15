@@ -84,7 +84,7 @@ fun AutoStepsEditor(
                         steps.addAll(rec)
                         context.toast("已錄下 ${rec.size} 個步驟，按「測試」試試看")
                     } else {
-                        context.toast("沒有錄到點擊，請再試一次")
+                        context.toast("沒有錄到點擊。請確認畫面上方有出現「● 錄製中」再點，點完按「完成」")
                     }
                 }
             }
@@ -96,7 +96,7 @@ fun AutoStepsEditor(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("自動點到條碼頁", color = Hud.Text, fontSize = 15.sp)
         Text(
-            "開啟 App 後自動依序點擊，直接停在會員條碼畫面。最簡單的方式是按「錄製」，在店家 App 裡照平常點到條碼頁，再回到會員卡夾。",
+            "開啟 App 後自動依序點擊，直接停在會員條碼畫面。按「錄製」後，店家 App 上方會出現「● 錄製中」，照平常點到條碼頁再按「完成」即可（點錯可按「撤銷」）。",
             color = Hud.TextDim,
             fontSize = 12.sp,
         )
@@ -130,7 +130,7 @@ fun AutoStepsEditor(
                         !enabled -> openAccessibilitySettings(context)
                         else -> {
                             AutoTap.startRecording(appPackage)
-                            context.toast("錄製中：請點到會員條碼頁後回到會員卡夾")
+                            context.toast("上方出現「● 錄製中」後，照平常點到條碼頁，再按「完成」")
                             StoreApps.launch(context, appPackage, appLabel)
                         }
                     }

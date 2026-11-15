@@ -76,6 +76,7 @@ object AutoTap {
         recorded.clear()
         recordingPackage = pkg
         recordingStart = System.currentTimeMillis()
+        service?.beginRecordWatch()
     }
 
     fun isRecording(): Boolean {
@@ -86,13 +87,12 @@ object AutoTap {
     /** 結束錄製並回傳錄到的步驟 */
     fun stopRecording(): List<AutoStep> {
         recordingPackage = ""
+        service?.endRecording()
         return recorded.toList()
     }
 
     /** 服務收到使用者在目標 App 的點擊時呼叫 */
     fun onRecordedClick(step: AutoStep) {
-        // 連續點同一個按鈕只記一次
-        if (recorded.lastOrNull() == step) return
         recorded.add(step)
     }
 

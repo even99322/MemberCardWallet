@@ -68,6 +68,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.mutableIntStateOf
 import com.even.membercards.data.Barcodes
 import com.even.membercards.data.CardPhotos
+import com.even.membercards.data.AutoStep
+import androidx.compose.runtime.mutableStateListOf
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.MemberCard
 import com.journeyapps.barcodescanner.ScanContract
@@ -109,6 +111,7 @@ fun EditScreen(
     var datePicker by remember { mutableStateOf(false) }
     var decoding by remember { mutableStateOf(false) }
     var points by rememberSaveable { mutableStateOf(existing?.points ?: "") }
+    val autoSteps = remember { mutableStateListOf<AutoStep>().apply { addAll(existing?.autoSteps.orEmpty()) } }
     // 新卡片先決定 id，照片才能先存
     val draftId = rememberSaveable { existing?.id ?: java.util.UUID.randomUUID().toString() }
     var photoVersion by remember { mutableIntStateOf(0) }
@@ -194,6 +197,7 @@ fun EditScreen(
                     folder = folder,
                     expiry = expiry,
                     points = points.trim(),
+                    autoSteps = if (appPackage.isBlank()) emptyList() else autoSteps.toList(),
                     pointsUpdated = if (points.trim() != (existing?.points ?: "")) System.currentTimeMillis()
                     else existing?.pointsUpdated ?: 0L,
                 )
@@ -443,6 +447,29 @@ fun EditScreen(
                     colors = hudFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (appPackage.isNotBlank()) {
+                    HudPanel {
+                        Spacer(Modifier.height(6.dp))
+                        AutoStepsEditor(
+                            steps = autoSteps,
+                            appPackage = appPackage,
+                            appLabel = appLabel,
+                            onTest = {
+                                StoreApps.open(
+                                    context,
+                                    MemberCard(
+                                        name = name,
+                                        number = "",
+                                        appPackage = appPackage,
+                                        appLabel = appLabel,
+                                        autoSteps = autoSteps.toList(),
+                                    ),
+                                )
+                            },
+                        )
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
 
                 // 05 其他
                 HudSection("05", "其他")

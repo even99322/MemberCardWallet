@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import com.even.membercards.data.AutoTap
 import com.even.membercards.data.MemberCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -102,6 +103,7 @@ object StoreApps {
         if (link.isNotEmpty()) {
             try {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                AutoTap.runFor(context, card)
                 return true
             } catch (e: ActivityNotFoundException) {
                 context.toast("無法開啟此連結，改開啟 App")
@@ -111,6 +113,7 @@ object StoreApps {
             val launch = context.packageManager.getLaunchIntentForPackage(card.appPackage)
             if (launch != null) {
                 context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                AutoTap.runFor(context, card)
                 return true
             }
             try {

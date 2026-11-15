@@ -26,6 +26,8 @@ data class MemberCard(
     /** 點數／餘額（自由文字，例如「1,250 點」「$300」） */
     val points: String = "",
     val pointsUpdated: Long = 0L,
+    /** 開啟店家 App 後自動點到條碼頁的步驟 */
+    val autoSteps: List<AutoStep> = emptyList(),
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -45,6 +47,7 @@ data class MemberCard(
         put("expiry", expiry)
         put("points", points)
         put("pointsUpdated", pointsUpdated)
+        put("autoSteps", AutoStep.listToJson(autoSteps))
     }
 
     companion object {
@@ -66,6 +69,7 @@ data class MemberCard(
             expiry = o.optLong("expiry", 0L),
             points = o.optString("points"),
             pointsUpdated = o.optLong("pointsUpdated", 0L),
+            autoSteps = AutoStep.listFromJson(o.optJSONArray("autoSteps")),
         )
     }
 }

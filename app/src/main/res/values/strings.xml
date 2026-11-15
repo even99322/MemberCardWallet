@@ -2,4 +2,6 @@
     <string name="app_name">會員卡夾</string>
     <string name="widget_desc">手機條碼載具與會員電話，點一下全螢幕顯示</string>
     <string name="tile_label">載具條碼</string>
+    <string name="auto_tap_label">會員卡夾自動點擊</string>
+    <string name="auto_tap_desc">從會員卡夾開啟店家 App 時，依照你設定（或錄製）的步驟自動點到會員條碼頁。只在你從會員卡夾開啟店家 App、或正在錄製步驟時動作；不會讀取、保存或上傳畫面內容與條碼。</string>
 </resources>

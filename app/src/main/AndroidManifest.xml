@@ -62,6 +62,20 @@
             </intent-filter>
         </service>
 
+        <!-- 自動點到會員條碼頁（無障礙服務） -->
+        <service
+            android:name=".AutoTapService"
+            android:exported="true"
+            android:label="@string/auto_tap_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/auto_tap_service" />
+        </service>
+
         <!-- 桌面小工具：載具條碼 -->
         <receiver
             android:name=".CarrierWidget"

@@ -203,6 +203,12 @@ fun SettingsScreen(
 
                 HudSection("04", "系統")
                 HudPanel {
+                    NavRow(
+                        "自動點擊（無障礙權限）",
+                        if (com.even.membercards.data.AutoTap.isEnabled(context)) "已開啟：開店家 App 時可自動點到條碼頁"
+                        else "未開啟：開啟後可在卡片設定自動點擊步驟",
+                    ) { openAccessibilitySettings(context) }
+                    HudDivider()
                     NavRow("檢查更新", "目前版本 v$version") { onCheckUpdate() }
                     HudDivider()
                     NavRow("GitHub 專案頁", "github.com/even99322/MemberCardWallet") {

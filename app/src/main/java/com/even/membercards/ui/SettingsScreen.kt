@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.even.membercards.data.AppSettings
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.Updater
+import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,6 +53,7 @@ fun SettingsScreen(
     settings: AppSettings,
     onBack: () -> Unit,
     onCheckUpdate: () -> Unit,
+    onQuickSetup: () -> Unit,
 ) {
     val context = LocalContext.current
     var showFolders by remember { mutableStateOf(false) }
@@ -62,7 +64,9 @@ fun SettingsScreen(
     ) { uri ->
         if (uri != null) {
             runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { it.write(repo.exportJson().toByteArray()) }
+                // 卡片、資料夾之外，也備份快捷列（載具、手機、付款 App）
+                val json = JSONObject(repo.exportJson()).put("quick", settings.quickJson()).toString(2)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
             }.onSuccess { context.toast("已匯出 ${repo.cards.size} 張會員卡") }
                 .onFailure { context.toast("匯出失敗：${it.message}") }
         }
@@ -72,6 +76,8 @@ fun SettingsScreen(
             runCatching {
                 val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     ?: error("無法讀取檔案")
+                runCatching { JSONObject(text.trim()).optJSONObject("quick") }.getOrNull()
+                    ?.let { settings.applyQuickJson(it) }
                 repo.importJson(text)
             }.onSuccess { context.toast("已匯入 $it 張會員卡") }
                 .onFailure { context.toast("匯入失敗：檔案格式不正確") }
@@ -166,6 +172,8 @@ fun SettingsScreen(
 
                 HudSection("03", "資料")
                 HudPanel {
+                    NavRow("快捷列", "手機條碼載具、手機號碼、常用付款 App") { onQuickSetup() }
+                    HudDivider()
                     NavRow("管理資料夾", "${repo.folders.size} 個資料夾") { showFolders = true }
                     HudDivider()
                     NavRow("匯出備份", "存成 JSON 檔，換手機時使用") { exportLauncher.launch("member-cards-backup.json") }

@@ -66,6 +66,36 @@ object StoreApps {
             .sortedBy { it.label.lowercase() }
     }
 
+    /** 直接開啟某個 App；找不到時帶到商店頁面。 */
+    fun launch(context: Context, pkg: String, label: String): Boolean {
+        val launch = context.packageManager.getLaunchIntentForPackage(pkg)
+        if (launch != null) {
+            context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return true
+        }
+        return try {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            context.toast("手機上找不到 $label，已開啟商店頁面")
+            true
+        } catch (e: ActivityNotFoundException) {
+            context.toast("手機上找不到 $label")
+            false
+        }
+    }
+
+    private val payKeywords = listOf(
+        "pay", "wallet", "錢包", "支付", "街口", "悠遊", "icash", "全盈", "line", "銀行", "bank", "信用卡", "台灣pay", "twqr",
+    )
+
+    /** 看起來像付款／錢包類的 App。 */
+    fun looksLikePayment(app: InstalledApp): Boolean {
+        val l = app.label.lowercase()
+        val p = app.pkg.lowercase()
+        return payKeywords.any { l.contains(it) } || listOf("pay", "wallet", "bank").any { p.contains(it) }
+    }
+
     /** 開啟卡片連結的店家 App／連結；回傳 false 表示沒有設定。 */
     fun open(context: Context, card: MemberCard): Boolean {
         val link = card.link.trim()
@@ -259,6 +289,89 @@ fun BindAppsDialog(
                     onConfirm(selected.mapNotNull { pkg -> all.firstOrNull { it.pkg == pkg } })
                 },
             ) { Text(if (selected.isEmpty()) "綁定" else "綁定 ${selected.size} 個") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+
+/** 通用的多選 App 對話框；已選的保持順序，priority 為 true 的排在前面。 */
+@Composable
+fun PickAppsDialog(
+    title: String,
+    hint: String,
+    initial: List<String>,
+    priority: (InstalledApp) -> Boolean,
+    onConfirm: (List<InstalledApp>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var apps by remember { mutableStateOf<List<InstalledApp>?>(null) }
+    var query by remember { mutableStateOf("") }
+    val selected = remember { mutableStateListOf<String>().apply { addAll(initial) } }
+
+    LaunchedEffect(Unit) {
+        apps = withContext(Dispatchers.IO) { runCatching { StoreApps.load(context) }.getOrDefault(emptyList()) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("搜尋 App") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                val list = apps
+                if (list == null) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { CircularProgressIndicator() }
+                } else {
+                    val shown = list
+                        .filter { query.isBlank() || it.label.contains(query, true) || it.pkg.contains(query, true) }
+                        .sortedByDescending { it.pkg in selected || priority(it) }
+                    LazyColumn(Modifier.heightIn(max = 400.dp)) {
+                        items(shown, key = { it.pkg }) { app ->
+                            val checked = app.pkg in selected
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { if (checked) selected.remove(app.pkg) else selected.add(app.pkg) }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = checked,
+                                    onCheckedChange = { if (checked) selected.remove(app.pkg) else selected.add(app.pkg) },
+                                )
+                                Image(app.icon, null, Modifier.size(32.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                if (checked) {
+                                    Text("${selected.indexOf(app.pkg) + 1}", style = MonoLabel, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val all = apps.orEmpty()
+                onConfirm(selected.mapNotNull { pkg -> all.firstOrNull { it.pkg == pkg } })
+            }) { Text("確定（${selected.size}）") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )

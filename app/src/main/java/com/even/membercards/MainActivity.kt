@@ -30,6 +30,7 @@ import com.even.membercards.ui.DetailScreen
 import com.even.membercards.ui.EditScreen
 import com.even.membercards.ui.ListScreen
 import com.even.membercards.ui.LockScreen
+import com.even.membercards.ui.QuickSetupScreen
 import com.even.membercards.ui.SettingsScreen
 import androidx.compose.ui.Modifier
 import com.even.membercards.ui.StoreApps
@@ -42,6 +43,7 @@ import kotlinx.coroutines.withContext
 sealed interface Screen {
     data object Home : Screen
     data object Settings : Screen
+    data object QuickSetup : Screen
     data class Detail(val id: String) : Screen
     data class Edit(
         val id: String?,
@@ -212,13 +214,21 @@ fun App(
             onEdit = { stack.add(Screen.Edit(it)) },
             onAdd = { folder -> stack.add(Screen.Edit(null, folder = folder)) },
             onOpenSettings = { stack.add(Screen.Settings) },
+            onQuickSetup = { stack.add(Screen.QuickSetup) },
             settings = settings,
+        )
+
+        Screen.QuickSetup -> QuickSetupScreen(
+            repo = repo,
+            settings = settings,
+            onBack = { pop() },
         )
 
         Screen.Settings -> SettingsScreen(
             repo = repo,
             settings = settings,
             onBack = { pop() },
+            onQuickSetup = { stack.add(Screen.QuickSetup) },
             onCheckUpdate = { checkUpdate(manual = true) },
         )
 

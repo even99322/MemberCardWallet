@@ -58,6 +58,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -83,6 +84,7 @@ fun ListScreen(
     onEdit: (String) -> Unit,
     onAdd: (folder: String) -> Unit,
     onOpenSettings: () -> Unit,
+    onQuickSetup: () -> Unit,
 ) {
     val context = LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -93,6 +95,8 @@ fun ListScreen(
     var creatingFolder by remember { mutableStateOf(false) }
     var movingCard by remember { mutableStateOf<MemberCard?>(null) }
     var deletingCard by remember { mutableStateOf<MemberCard?>(null) }
+    var showCarrier by remember { mutableStateOf<String?>(null) }
+    var showPhone by remember { mutableStateOf<String?>(null) }
 
     val sel = selectedFolder
     if (sel != null && sel != UNCATEGORIZED && sel !in repo.folders) selectedFolder = null
@@ -228,6 +232,18 @@ fun ListScreen(
                     .padding(padding)
                     .fillMaxSize()
             ) {
+                // 快捷列：載具、手機號碼、付款 App（搜尋時隱藏）
+                if (query.isBlank()) {
+                    QuickBar(
+                        settings = settings,
+                        repo = repo,
+                        onSetup = onQuickSetup,
+                        onShowCarrier = { showCarrier = it },
+                        onShowPhone = { showPhone = it },
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp),
+                    )
+                }
+
                 if (repo.cards.isNotEmpty()) {
                     OutlinedTextField(
                         value = query,
@@ -328,6 +344,25 @@ fun ListScreen(
                 }
             }
         }
+    }
+
+    showCarrier?.let { c ->
+        val bmp = remember(c) { runCatching { Barcodes.encode(c, "CODE_39", 1000) }.getOrNull() }
+        if (bmp != null) {
+            FullscreenBarcode(
+                bitmap = bmp.asImageBitmap(),
+                number = c,
+                rotate = true,
+                title = "手機條碼載具",
+                onClose = { showCarrier = null },
+            )
+        } else {
+            showCarrier = null
+            context.toast("載具號碼格式不正確，請到快捷列設定修改")
+        }
+    }
+    showPhone?.let { p ->
+        FullscreenText(title = "會員手機號碼", text = formatPhone(p), onClose = { showPhone = null })
     }
 
     if (showBindApps) {

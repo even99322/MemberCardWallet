@@ -1,3 +1,6 @@
 <resources>
-    <style name="Theme.MemberCards" parent="android:Theme.Material.NoActionBar" />
+    <style name="Theme.MemberCards" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/hud_bg</item>
+        <item name="android:colorBackground">@color/hud_bg</item>
+    </style>
 </resources>

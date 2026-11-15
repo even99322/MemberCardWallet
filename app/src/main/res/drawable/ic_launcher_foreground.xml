@@ -4,10 +4,19 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- 四角 HUD 框 -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,36h48a4,4 0,0 1,4 4v28a4,4 0,0 1,-4 4h-48a4,4 0,0 1,-4 -4v-28a4,4 0,0 1,4 -4z" />
+        android:strokeColor="#38E8FF"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="square"
+        android:fillColor="#00000000"
+        android:pathData="M30,40 V32 H38 M70,32 H78 V40 M78,68 V76 H70 M38,76 H30 V68" />
+    <!-- 條碼 -->
     <path
-        android:fillColor="#1A2B5B"
-        android:pathData="M33,44h2v20h-2z M37,44h1v20h-1z M40,44h3v20h-3z M45,44h1v20h-1z M48,44h2v20h-2z M52,44h1v20h-1z M55,44h3v20h-3z M60,44h1v20h-1z M63,44h2v20h-2z M67,44h1v20h-1z M70,44h3v20h-3z M75,44h1v20h-1z" />
+        android:fillColor="#E4EDF8"
+        android:pathData="M36,42h2v24h-2z M40,42h1v24h-1z M43,42h3v24h-3z M48,42h1v24h-1z M51,42h2v24h-2z M55,42h1v24h-1z M58,42h3v24h-3z M63,42h1v24h-1z M66,42h2v24h-2z M70,42h1v24h-1z" />
+    <!-- 掃描線 -->
+    <path
+        android:fillColor="#38E8FF"
+        android:pathData="M33,53.2h42v1.6h-42z" />
 </vector>

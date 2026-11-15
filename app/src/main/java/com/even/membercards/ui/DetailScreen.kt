@@ -4,17 +4,25 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -26,8 +34,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,7 +41,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -45,161 +50,234 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
+import com.even.membercards.data.AppSettings
 import com.even.membercards.data.Barcodes
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.Shortcuts
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DetailScreen(repo: CardRepository, id: String, onBack: () -> Unit, onEdit: () -> Unit) {
+fun DetailScreen(
+    repo: CardRepository,
+    settings: AppSettings,
+    id: String,
+    onBack: () -> Unit,
+    onEdit: () -> Unit,
+) {
     val card = repo.get(id) ?: return
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     var confirmDelete by remember { mutableStateOf(false) }
+    var fullscreen by remember { mutableStateOf(false) }
 
     LaunchedEffect(id) { repo.markUsed(id) }
-    KeepScreenBright()
+    if (settings.autoBrightness && card.number.isNotBlank()) KeepScreenBright()
 
-    val bg = Color(card.color)
-    val fg = onColor(bg)
+    val accent = accentOf(card.color)
     val fmt = Barcodes.find(card.format)
     val barcode = remember(card.number, card.format) {
         runCatching { Barcodes.encode(card.number, card.format, 1000) }
     }
+    val bmp = barcode.getOrNull()
+    val hasApp = card.appPackage.isNotBlank() || card.link.isNotBlank()
 
-    Scaffold(
-        containerColor = bg,
-        topBar = {
-            TopAppBar(
-                title = { Text(card.name) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
-                },
-                actions = {
-                    IconButton(onClick = { repo.upsert(card.copy(favorite = !card.favorite)) }) {
-                        Icon(
-                            if (card.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            if (card.favorite) "取消常用" else "設為常用",
+    Box(
+        Modifier
+            .fillMaxSize()
+            .hudBackground()
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = {},
+                    navigationIcon = {
+                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                    },
+                    actions = {
+                        IconButton(onClick = { repo.upsert(card.copy(favorite = !card.favorite)) }) {
+                            Icon(
+                                if (card.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                if (card.favorite) "取消常用" else "設為常用",
+                                tint = if (card.favorite) Hud.Cyan else Hud.TextDim,
+                            )
+                        }
+                        IconButton(onClick = {
+                            if (!Shortcuts.requestPin(context, card)) context.toast("你的桌面不支援新增捷徑")
+                        }) { Icon(Icons.Filled.Home, "加到主畫面") }
+                        IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, "編輯") }
+                        IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, "刪除") }
+                    },
+                    colors = hudTopBarColors(),
+                )
+            },
+        ) { padding ->
+            Column(
+                Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // 標頭
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    CardGlyph(card, 48.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(card.name, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Hud.Text)
+                        Text(
+                            "${card.folder.ifBlank { "未分類" }}  //  USED ${card.useCount}×",
+                            style = MonoLabel,
+                            color = accent,
                         )
                     }
-                    IconButton(onClick = {
-                        if (!Shortcuts.requestPin(context, card)) context.toast("你的桌面不支援新增捷徑")
-                    }) { Icon(Icons.Filled.Home, "加到主畫面") }
-                    IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, "編輯") }
-                    IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, "刪除") }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = bg,
-                    titleContentColor = fg,
-                    navigationIconContentColor = fg,
-                    actionIconContentColor = fg,
-                ),
-            )
-        },
-    ) { padding ->
-        Column(
-            Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            val hasApp = card.appPackage.isNotBlank() || card.link.isNotBlank()
-            if (card.number.isNotBlank()) Column(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color.White, RoundedCornerShape(20.dp))
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                val bmp = barcode.getOrNull()
-                when {
-                    barcode.isFailure -> Text(
-                        "號碼不符合 ${fmt.label} 格式，請編輯並改用其他格式（例如 Code 128）。",
-                        color = Color(0xFFB00020),
-                        textAlign = TextAlign.Center,
-                    )
+                }
+                Spacer(Modifier.height(20.dp))
 
-                    bmp != null -> Image(
-                        bitmap = bmp.asImageBitmap(),
-                        contentDescription = "條碼",
-                        contentScale = ContentScale.Fit,
-                        filterQuality = FilterQuality.None,
+                if (card.number.isNotBlank()) {
+                    // 條碼（白底才掃得到）
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .cornerBrackets(Hud.Cyan, length = 16.dp, stroke = 2.dp)
+                            .padding(10.dp)
+                    ) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(Color.White, RoundedCornerShape(6.dp))
+                                .clickable(enabled = bmp != null) { fullscreen = true }
+                                .padding(horizontal = 14.dp, vertical = 22.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            when {
+                                barcode.isFailure -> Text(
+                                    "號碼不符合 ${fmt.label} 格式，請編輯並改用其他格式（例如 Code 128）。",
+                                    color = Color(0xFFB00020),
+                                    textAlign = TextAlign.Center,
+                                )
+
+                                bmp != null -> Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = "條碼",
+                                    contentScale = ContentScale.Fit,
+                                    filterQuality = FilterQuality.None,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = if (fmt.is2D && fmt.key != "PDF_417") 280.dp else 150.dp),
+                                )
+
+                                else -> Text("（此卡設定為只顯示號碼）", color = Color.Gray)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        prettyNumber(card.number),
+                        fontFamily = Mono,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 24.sp,
+                        letterSpacing = 2.sp,
+                        color = Hud.Text,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.clickable {
+                            clipboard.setText(AnnotatedString(card.number))
+                            context.toast("已複製號碼")
+                        },
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (bmp != null) "點條碼全螢幕放大 · 點號碼複製" else "點號碼複製",
+                        style = MonoLabel,
+                        color = Hud.TextFaint,
+                    )
+                } else {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .border(1.dp, Hud.Line, RoundedCornerShape(10.dp))
+                            .cornerBrackets(accent, length = 12.dp, stroke = 1.5.dp, inset = 4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("NO BARCODE STORED", style = MonoLabel.copy(letterSpacing = 3.sp), color = accent)
+                            Spacer(Modifier.height(6.dp))
+                            Text("這張卡的條碼在店家 App 內", color = Hud.TextDim, fontSize = 13.sp)
+                        }
+                    }
+                }
+
+                if (hasApp) {
+                    Spacer(Modifier.height(18.dp))
+                    HudButton(
+                        text = "▶  開啟 ${card.appLabel.ifBlank { "店家 App" }}",
+                        onClick = {
+                            repo.markUsed(card.id)
+                            if (!StoreApps.open(context, card)) context.toast("尚未設定店家 App")
+                        },
+                        accent = accent,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = if (fmt.is2D && fmt.key != "PDF_417") 300.dp else 160.dp),
+                            .height(52.dp),
                     )
                 }
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    prettyNumber(card.number),
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 22.sp,
-                    color = Color.Black,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.clickable {
-                        clipboard.setText(AnnotatedString(card.number))
-                        context.toast("已複製號碼")
-                    },
-                )
-                Spacer(Modifier.height(6.dp))
-                Text("點號碼可複製 · ${fmt.label}", fontSize = 12.sp, color = Color.Gray)
-            } else {
-                Text(
-                    "這張卡沒有存條碼，請開啟店家 App 出示。",
-                    color = fg,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp),
-                )
-            }
 
-            if (hasApp) {
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        if (!StoreApps.open(context, card)) context.toast("尚未設定店家 App")
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color(0xFF1B1B1F),
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                ) {
-                    Text(
-                        "開啟 ${card.appLabel.ifBlank { "店家 App" }}",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp,
-                    )
+                Spacer(Modifier.height(22.dp))
+                HudPanel {
+                    if (card.number.isNotBlank()) {
+                        HudInfoRow("FORMAT", fmt.label)
+                    }
+                    val days = daysLeft(card)
+                    if (days != null) {
+                        val (text, color) = when {
+                            days < 0 -> "${expiryDate(card.expiry)}（已過期 ${-days} 天）" to Hud.Danger
+                            days <= 30 -> "${expiryDate(card.expiry)}（剩 $days 天）" to Hud.Warn
+                            else -> "${expiryDate(card.expiry)}（剩 $days 天）" to Hud.Text
+                        }
+                        HudInfoRow("EXPIRES", text, color)
+                    }
+                    if (card.appLabel.isNotBlank()) HudInfoRow("APP", card.appLabel)
+                    HudInfoRow("USAGE", "${card.useCount} 次")
+                    HudInfoRow("LAST USED", timeAgo(card.lastUsed))
+                    HudInfoRow("ADDED", expiryDate(card.createdAt).toString())
+                    if (card.note.isNotBlank()) {
+                        HudDivider()
+                        Text("NOTE", style = MonoLabel, color = Hud.TextDim, modifier = Modifier.padding(top = 10.dp))
+                        Text(
+                            card.note,
+                            color = Hud.Text,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+                        )
+                    }
                 }
+                Spacer(Modifier.height(32.dp))
             }
+        }
 
-            if (card.note.isNotBlank()) {
-                Spacer(Modifier.height(20.dp))
-                Text(
-                    card.note,
-                    color = fg,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+        if (fullscreen && bmp != null) {
+            FullscreenBarcode(
+                bitmap = bmp.asImageBitmap(),
+                number = card.number,
+                rotate = !(fmt.is2D && fmt.key != "PDF_417"),
+                onClose = { fullscreen = false },
+            )
         }
     }
 
@@ -213,11 +291,67 @@ fun DetailScreen(repo: CardRepository, id: String, onBack: () -> Unit, onEdit: (
                     confirmDelete = false
                     onBack()
                     repo.delete(id)
-                }) { Text("刪除") }
+                }) { Text("刪除", color = Hud.Danger) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDelete = false }) { Text("取消") }
             },
+        )
+    }
+}
+
+/** 全螢幕白底條碼；一維條碼轉成橫向，讓條碼盡量大。 */
+@Composable
+private fun FullscreenBarcode(bitmap: ImageBitmap, number: String, rotate: Boolean, onClose: () -> Unit) {
+    BackHandler { onClose() }
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .background(Color.White)
+            .clickable(onClick = onClose),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (rotate) {
+            Column(
+                Modifier
+                    .requiredSize(width = maxHeight * 0.86f, height = maxWidth * 0.78f)
+                    .rotate(90f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Image(
+                    bitmap,
+                    "條碼",
+                    contentScale = ContentScale.FillBounds,
+                    filterQuality = FilterQuality.None,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(number, fontFamily = Mono, fontSize = 26.sp, letterSpacing = 3.sp, color = Color.Black)
+            }
+        } else {
+            val side = min(maxWidth, maxHeight) * 0.86f
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Image(
+                    bitmap,
+                    "條碼",
+                    contentScale = ContentScale.Fit,
+                    filterQuality = FilterQuality.None,
+                    modifier = Modifier.size(side),
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(number, fontFamily = Mono, fontSize = 22.sp, letterSpacing = 2.sp, color = Color.Black)
+            }
+        }
+        Text(
+            "點任意處關閉",
+            color = Color.Gray,
+            fontSize = 12.sp,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 32.dp),
         )
     }
 }

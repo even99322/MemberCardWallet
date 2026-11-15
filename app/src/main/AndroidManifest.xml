@@ -5,6 +5,8 @@
     <!-- 檢查與安裝更新 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- App 鎖定（指紋／臉部） -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- 讓 App 能列出並開啟手機上的店家 App -->
     <queries>

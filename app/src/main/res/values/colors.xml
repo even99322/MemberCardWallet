@@ -1,3 +1,4 @@
 <resources>
-    <color name="ic_launcher_background">#2B5BD7</color>
+    <color name="ic_launcher_background">#05080F</color>
+    <color name="hud_bg">#05080F</color>
 </resources>

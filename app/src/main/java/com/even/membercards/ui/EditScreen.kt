@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,7 +24,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -33,21 +31,21 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,8 +61,9 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.even.membercards.data.Barcodes
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.MemberCard
@@ -98,11 +97,13 @@ fun EditScreen(
     var appPackage by rememberSaveable { mutableStateOf(existing?.appPackage ?: "") }
     var appLabel by rememberSaveable { mutableStateOf(existing?.appLabel ?: "") }
     var link by rememberSaveable { mutableStateOf(existing?.link ?: "") }
-    var showAppPicker by remember { mutableStateOf(false) }
     var folder by rememberSaveable { mutableStateOf(existing?.folder ?: defaultFolder) }
+    var expiry by rememberSaveable { mutableStateOf(existing?.expiry ?: 0L) }
+    var showAppPicker by remember { mutableStateOf(false) }
     var folderMenu by remember { mutableStateOf(false) }
     var creatingFolder by remember { mutableStateOf(false) }
     var formatMenu by remember { mutableStateOf(false) }
+    var datePicker by remember { mutableStateOf(false) }
     var decoding by remember { mutableStateOf(false) }
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
@@ -177,6 +178,7 @@ fun EditScreen(
                     appLabel = appLabel,
                     link = link.trim(),
                     folder = folder,
+                    expiry = expiry,
                 )
                 repo.upsert(card)
                 onSaved(card.id)
@@ -184,78 +186,104 @@ fun EditScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (existing == null) "新增會員卡" else "編輯會員卡") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
-                },
-                actions = {
-                    IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, "儲存") }
-                },
-            )
-        },
-    ) { padding ->
-        Column(
-            Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // 1. 取得號碼
-            Text("會員條碼", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(
-                    onClick = {
-                        scanLauncher.launch(
-                            ScanOptions().apply {
-                                setPrompt("將條碼對準畫面中央")
-                                setBeepEnabled(false)
-                                setOrientationLocked(false)
-                            }
-                        )
+    val fieldShape = RoundedCornerShape(8.dp)
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .hudBackground()
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(if (existing == null) "新增會員卡" else "編輯會員卡", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (existing == null) "NEW CARD // INPUT" else "EDIT // ${existing.id.take(8).uppercase()}",
+                                style = MonoLabel,
+                                color = Hud.Cyan,
+                            )
+                        }
                     },
-                    modifier = Modifier.weight(1f),
-                ) { Text("相機掃描") }
-                FilledTonalButton(
-                    onClick = {
-                        imageLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                    navigationIcon = {
+                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                     },
-                    enabled = !decoding,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    if (decoding) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    else Text("從截圖辨識")
+                    actions = {
+                        IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, "儲存", tint = Hud.Cyan) }
+                    },
+                    colors = hudTopBarColors(),
+                )
+            },
+        ) { padding ->
+            Column(
+                Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                // 01 條碼
+                HudSection("01", "會員條碼")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HudButton(
+                        text = "◎  相機掃描",
+                        onClick = {
+                            scanLauncher.launch(
+                                ScanOptions().apply {
+                                    setPrompt("將條碼對準畫面中央")
+                                    setBeepEnabled(false)
+                                    setOrientationLocked(false)
+                                }
+                            )
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                    )
+                    HudButton(
+                        text = "▣  截圖辨識",
+                        onClick = {
+                            imageLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        enabled = !decoding,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                    ) {
+                        if (decoding) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Hud.Cyan)
+                        } else {
+                            Text("▣  截圖辨識", fontWeight = FontWeight.Medium)
+                        }
+                    }
                 }
-            }
 
-            OutlinedTextField(
-                value = number,
-                onValueChange = { number = it },
-                label = { Text("會員號碼") },
-                singleLine = true,
-                isError = error != null,
-                supportingText = { if (error != null) Text(error) },
-                textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Box {
-                OutlinedButton(
-                    onClick = { formatMenu = true },
+                OutlinedTextField(
+                    value = number,
+                    onValueChange = { number = it },
+                    label = { Text("會員號碼") },
+                    placeholder = { Text("綁定 App 的卡可留空", color = Hud.TextFaint) },
+                    singleLine = true,
+                    isError = error != null,
+                    supportingText = { if (error != null) Text(error) },
+                    textStyle = MonoLabel.copy(fontSize = 16.sp, letterSpacing = 1.sp, color = Hud.Text),
+                    shape = fieldShape,
+                    colors = hudFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                )
+
+                DropdownField(
+                    label = "條碼格式",
+                    value = Barcodes.find(format).label,
+                    expanded = formatMenu,
+                    onExpand = { formatMenu = it },
                 ) {
-                    Text("條碼格式：${Barcodes.find(format).label}", modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.ArrowDropDown, null)
-                }
-                DropdownMenu(expanded = formatMenu, onDismissRequest = { formatMenu = false }) {
                     Barcodes.formats.forEach { f ->
                         DropdownMenuItem(
                             text = { Text(f.label) },
@@ -266,65 +294,68 @@ fun EditScreen(
                         )
                     }
                 }
-            }
 
-            if (preview != null) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(Color.White, RoundedCornerShape(12.dp))
-                        .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(12.dp))
-                        .padding(12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        bitmap = preview.asImageBitmap(),
-                        contentDescription = "條碼預覽",
-                        contentScale = ContentScale.Fit,
-                        filterQuality = FilterQuality.None,
-                        modifier = Modifier
+                if (preview != null) {
+                    Box(
+                        Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 140.dp),
-                    )
-                }
-            }
-
-            // 2. 店家資訊
-            Spacer(Modifier.height(4.dp))
-            Text("店家", style = MaterialTheme.typography.titleSmall)
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("店家名稱") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            if (existing == null) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(presets) { p ->
-                        SuggestionChip(
-                            onClick = {
-                                name = p.name
-                                color = p.color
-                                if (number.isBlank() || p.format == "CODE_39") format = p.format
-                            },
-                            label = { Text(p.name) },
-                        )
+                            .cornerBrackets(Hud.CyanDim, length = 10.dp, stroke = 1.5.dp)
+                            .padding(6.dp)
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(Color.White, RoundedCornerShape(4.dp))
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Image(
+                                bitmap = preview.asImageBitmap(),
+                                contentDescription = "條碼預覽",
+                                contentScale = ContentScale.Fit,
+                                filterQuality = FilterQuality.None,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 120.dp),
+                            )
+                        }
                     }
                 }
-            }
 
-            Text("資料夾", style = MaterialTheme.typography.titleSmall)
-            Box {
-                OutlinedButton(
-                    onClick = { folderMenu = true },
+                // 02 店家
+                HudSection("02", "店家")
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("店家名稱") },
+                    singleLine = true,
+                    shape = fieldShape,
+                    colors = hudFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                ) {
-                    Text(folder.ifBlank { "未分類" }, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.ArrowDropDown, null)
+                )
+                if (existing == null) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(presets) { p ->
+                            FilterChip(
+                                selected = name == p.name,
+                                onClick = {
+                                    name = p.name
+                                    color = p.color
+                                    if (number.isBlank() || p.format == "CODE_39") format = p.format
+                                },
+                                label = { Text(p.name) },
+                                colors = hudChipColors(),
+                                border = hudChipBorder(name == p.name),
+                            )
+                        }
+                    }
                 }
-                DropdownMenu(expanded = folderMenu, onDismissRequest = { folderMenu = false }) {
+                DropdownField(
+                    label = "資料夾",
+                    value = folder.ifBlank { "未分類" },
+                    expanded = folderMenu,
+                    onExpand = { folderMenu = it },
+                ) {
                     (listOf("") + repo.folders).forEach { f ->
                         DropdownMenuItem(
                             text = { Text(f.ifBlank { "未分類" }) },
@@ -335,79 +366,122 @@ fun EditScreen(
                         )
                     }
                     DropdownMenuItem(
-                        text = { Text("＋ 新增資料夾") },
+                        text = { Text("＋ 新增資料夾", color = Hud.Cyan) },
                         onClick = {
                             folderMenu = false
                             creatingFolder = true
                         },
                     )
                 }
-            }
 
-            Text("卡片顏色", style = MaterialTheme.typography.titleSmall)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(Palette.colors) { c ->
-                    val selected = c == color
-                    Box(
-                        Modifier
-                            .size(40.dp)
-                            .background(Color(c), CircleShape)
-                            .border(
-                                width = if (selected) 3.dp else 1.dp,
-                                color = if (selected) MaterialTheme.colorScheme.primary else Color(0x33000000),
-                                shape = CircleShape,
-                            )
-                            .clickable { color = c },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (selected) Icon(Icons.Filled.Check, null, tint = onColor(Color(c)))
+                // 03 外觀
+                HudSection("03", "卡片顏色")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(Palette.colors) { c ->
+                        val selected = c == color
+                        Box(
+                            Modifier
+                                .size(38.dp)
+                                .then(
+                                    if (selected) Modifier.cornerBrackets(Hud.Cyan, length = 8.dp, stroke = 2.dp)
+                                    else Modifier
+                                )
+                                .padding(5.dp)
+                                .background(Color(c), RoundedCornerShape(5.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(5.dp))
+                                .clickable { color = c },
+                        )
                     }
                 }
-            }
 
-            // 3. 連結店家 App
-            Text("店家 App（選填）", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "連結後在卡片頁可一鍵開啟。像 OPENPOINT、PX Pay 這類會變動的動態條碼無法儲存，可以只連結 App、號碼留空。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(
-                    onClick = { showAppPicker = true },
-                    modifier = Modifier.weight(1f),
-                ) { Text(if (appPackage.isBlank()) "選擇店家 App" else "已連結：$appLabel") }
-                if (appPackage.isNotBlank()) {
-                    IconButton(onClick = {
-                        appPackage = ""
-                        appLabel = ""
-                    }) { Icon(Icons.Filled.Close, "取消連結") }
+                // 04 店家 App
+                HudSection("04", "店家 App")
+                Text(
+                    "連結後可一鍵開啟。像 OPENPOINT、PX Pay 這類會變動或禁止截圖的條碼，可以只連結 App、號碼留空。",
+                    color = Hud.TextDim,
+                    fontSize = 12.sp,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HudButton(
+                        text = if (appPackage.isBlank()) "選擇店家 App" else "已連結：$appLabel",
+                        onClick = { showAppPicker = true },
+                        accent = if (appPackage.isBlank()) Hud.TextDim else Hud.Cyan,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (appPackage.isNotBlank()) {
+                        IconButton(onClick = {
+                            appPackage = ""
+                            appLabel = ""
+                        }) { Icon(Icons.Filled.Close, "取消連結", tint = Hud.TextDim) }
+                    }
                 }
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    label = { Text("自訂開啟連結（進階，選填）") },
+                    placeholder = { Text("網址或 App 深層連結", color = Hud.TextFaint) },
+                    singleLine = true,
+                    shape = fieldShape,
+                    colors = hudFieldColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                // 05 其他
+                HudSection("05", "其他")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    DropdownField(
+                        label = "有效期限",
+                        value = if (expiry > 0) expiryDate(expiry).toString() else "未設定",
+                        expanded = false,
+                        onExpand = { if (it) datePicker = true },
+                        modifier = Modifier.weight(1f),
+                    ) {}
+                    if (expiry > 0) {
+                        IconButton(onClick = { expiry = 0L }) { Icon(Icons.Filled.Close, "清除日期", tint = Hud.TextDim) }
+                    }
+                }
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("備註（選填，例如會員等級、密碼提示）") },
+                    minLines = 2,
+                    shape = fieldShape,
+                    colors = hudFieldColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(Modifier.height(4.dp))
+                androidx.compose.material3.Button(
+                    onClick = { save() },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = Hud.Cyan,
+                        contentColor = Hud.Bg,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                ) { Text("儲存", fontWeight = FontWeight.SemiBold, fontSize = 16.sp) }
+                Spacer(Modifier.height(28.dp))
             }
-            OutlinedTextField(
-                value = link,
-                onValueChange = { link = it },
-                label = { Text("自訂開啟連結（進階，選填）") },
-                placeholder = { Text("網址或 App 深層連結") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+        }
+    }
 
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                label = { Text("備註（選填，例如密碼提示、會員等級）") },
-                minLines = 2,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Button(
-                onClick = { save() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-            ) { Text("儲存") }
-            Spacer(Modifier.height(24.dp))
+    if (datePicker) {
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = if (expiry > 0) expiry else null,
+        )
+        DatePickerDialog(
+            onDismissRequest = { datePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { expiry = it }
+                    datePicker = false
+                }) { Text("確定") }
+            },
+            dismissButton = { TextButton(onClick = { datePicker = false }) { Text("取消") } },
+        ) {
+            DatePicker(state = state)
         }
     }
 
@@ -437,6 +511,36 @@ fun EditScreen(
             },
             onDismiss = { showAppPicker = false },
         )
+    }
+}
+
+/** 下拉選單樣式的欄位（小標 + 數值 + ▼）。 */
+@Composable
+private fun DropdownField(
+    label: String,
+    value: String,
+    expanded: Boolean,
+    onExpand: (Boolean) -> Unit,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    items: @Composable () -> Unit,
+) {
+    Box(modifier) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Hud.Surface, RoundedCornerShape(8.dp))
+                .border(1.dp, if (expanded) Hud.Cyan else Hud.Line, RoundedCornerShape(8.dp))
+                .clickable { onExpand(true) }
+                .padding(PaddingValues(horizontal = 14.dp, vertical = 10.dp)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MonoLabel, color = Hud.TextDim)
+                Text(value, color = Hud.Text, fontSize = 15.sp)
+            }
+            Icon(Icons.Filled.ArrowDropDown, null, tint = Hud.TextDim)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { onExpand(false) }) { items() }
     }
 }
 

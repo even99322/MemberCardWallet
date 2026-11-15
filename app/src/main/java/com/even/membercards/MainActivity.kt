@@ -3,10 +3,14 @@ package com.even.membercards
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
+import androidx.activity.SystemBarStyle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
@@ -17,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.IntentCompat
+import com.even.membercards.data.AppSettings
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.Shortcuts
 import com.even.membercards.data.Updater
@@ -24,6 +29,9 @@ import com.even.membercards.ui.AppTheme
 import com.even.membercards.ui.DetailScreen
 import com.even.membercards.ui.EditScreen
 import com.even.membercards.ui.ListScreen
+import com.even.membercards.ui.LockScreen
+import com.even.membercards.ui.SettingsScreen
+import androidx.compose.ui.Modifier
 import com.even.membercards.ui.StoreApps
 import com.even.membercards.ui.UpdateDialog
 import com.even.membercards.ui.toast
@@ -33,6 +41,7 @@ import kotlinx.coroutines.withContext
 
 sealed interface Screen {
     data object Home : Screen
+    data object Settings : Screen
     data class Detail(val id: String) : Screen
     data class Edit(
         val id: String?,
@@ -51,17 +60,47 @@ sealed interface Incoming {
 
 class MainActivity : ComponentActivity() {
     private val incoming = mutableStateOf<Incoming?>(null)
+    private val locked = mutableStateOf(false)
+    private var backgroundAt = 0L
+    private lateinit var settings: AppSettings
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         val repo = CardRepository.instance(applicationContext)
+        settings = AppSettings.instance(applicationContext)
+        locked.value = settings.lockEnabled
         if (savedInstanceState == null) incoming.value = parse(intent)
         setContent {
             AppTheme {
-                App(repo, incoming.value) { incoming.value = null }
+                Box(Modifier.fillMaxSize()) {
+                    App(repo, settings, incoming.value, locked.value) { incoming.value = null }
+                    if (locked.value) LockScreen(onUnlock = { locked.value = false })
+                }
             }
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        backgroundAt = SystemClock.elapsedRealtime()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // 離開超過 30 秒回來就重新上鎖
+        if (settings.lockEnabled && backgroundAt > 0 &&
+            SystemClock.elapsedRealtime() - backgroundAt > LOCK_TIMEOUT_MS
+        ) {
+            locked.value = true
+        }
+    }
+
+    companion object {
+        private const val LOCK_TIMEOUT_MS = 30_000L
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -93,7 +132,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit) {
+fun App(
+    repo: CardRepository,
+    settings: AppSettings,
+    incoming: Incoming?,
+    locked: Boolean,
+    onIncomingHandled: () -> Unit,
+) {
     val stack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -101,7 +146,8 @@ fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit
         if (stack.size > 1) stack.removeAt(stack.lastIndex)
     }
 
-    LaunchedEffect(incoming) {
+    LaunchedEffect(incoming, locked) {
+        if (locked) return@LaunchedEffect // 解鎖後才處理捷徑／分享
         when (incoming) {
             null -> return@LaunchedEffect
             is Incoming.OpenCard -> {
@@ -146,7 +192,7 @@ fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit
         }
     }
     LaunchedEffect(Unit) { checkUpdate(manual = false) }
-    update?.let { r ->
+    if (!locked) update?.let { r ->
         UpdateDialog(
             release = r,
             onSkip = {
@@ -165,11 +211,20 @@ fun App(repo: CardRepository, incoming: Incoming?, onIncomingHandled: () -> Unit
             onOpenDetail = { stack.add(Screen.Detail(it)) },
             onEdit = { stack.add(Screen.Edit(it)) },
             onAdd = { folder -> stack.add(Screen.Edit(null, folder = folder)) },
+            onOpenSettings = { stack.add(Screen.Settings) },
+            settings = settings,
+        )
+
+        Screen.Settings -> SettingsScreen(
+            repo = repo,
+            settings = settings,
+            onBack = { pop() },
             onCheckUpdate = { checkUpdate(manual = true) },
         )
 
         is Screen.Detail -> DetailScreen(
             repo = repo,
+            settings = settings,
             id = current.id,
             onBack = { pop() },
             onEdit = { stack.add(Screen.Edit(current.id)) },

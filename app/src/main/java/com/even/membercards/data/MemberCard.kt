@@ -21,6 +21,8 @@ data class MemberCard(
     val link: String = "",
     /** 所屬資料夾名稱，空字串 = 未分類 */
     val folder: String = "",
+    /** 有效期限（UTC 午夜毫秒），0 = 未設定 */
+    val expiry: Long = 0L,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -37,6 +39,7 @@ data class MemberCard(
         put("appLabel", appLabel)
         put("link", link)
         put("folder", folder)
+        put("expiry", expiry)
     }
 
     companion object {
@@ -55,6 +58,7 @@ data class MemberCard(
             appLabel = o.optString("appLabel"),
             link = o.optString("link"),
             folder = o.optString("folder"),
+            expiry = o.optLong("expiry", 0L),
         )
     }
 }

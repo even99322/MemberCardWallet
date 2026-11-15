@@ -11,7 +11,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -147,11 +150,16 @@ fun QuickBar(
 
         if (!collapsed) {
             Spacer(Modifier.height(2.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.height(IntrinsicSize.Max),
+            ) {
                 // 載具
                 QuickTile(
                     label = "CARRIER // 載具",
-                    modifier = Modifier.weight(1.15f),
+                    modifier = Modifier
+                        .weight(1.15f)
+                        .fillMaxHeight(),
                     onClick = { if (carrier.isBlank()) onSetup() else onShowCarrier(carrier) },
                 ) {
                     if (carrier.isBlank()) {
@@ -191,7 +199,9 @@ fun QuickBar(
                 // 手機號碼
                 QuickTile(
                     label = "PHONE // 手機",
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
                     onClick = { if (phone.isBlank()) onSetup() else onShowPhones() },
                 ) {
                     if (phone.isBlank()) {
@@ -263,15 +273,15 @@ private fun QuickTile(
 ) {
     Column(
         modifier
-            .height(64.dp)
+            .heightIn(min = 64.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Hud.Surface2, RoundedCornerShape(8.dp))
             .border(1.dp, Hud.Line, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(label, style = MonoLabel.copy(fontSize = 9.sp), color = Hud.Cyan)
+        Text(label, style = MonoLabel.copy(fontSize = 9.sp), color = Hud.Cyan, maxLines = 1)
         Column { content() }
     }
 }

@@ -15,33 +15,40 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -50,17 +57,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.even.membercards.data.AppSettings
-import com.even.membercards.data.Categories
+import com.even.membercards.data.Category
 import com.even.membercards.data.LedgerEntry
 import com.even.membercards.data.LedgerRepository
 import com.even.membercards.data.formatMoney
+import com.even.membercards.data.formatNumber
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -68,6 +79,7 @@ import java.time.ZoneId
 import java.time.format.TextStyle
 import java.util.Locale
 
+/** 記帳主畫面：明細／圖表／帳戶／設定，中間是「記一筆」。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LedgerScreen(
@@ -78,30 +90,9 @@ fun LedgerScreen(
     onEdit: (String) -> Unit,
     onAutoSetup: () -> Unit,
 ) {
-    val context = LocalContext.current
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     var monthText by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     val month = YearMonth.parse(monthText)
-    var menu by remember { mutableStateOf(false) }
-    var budgetDialog by remember { mutableStateOf(false) }
-    val zone = ZoneId.systemDefault()
-
-    val list = ledger.monthEntries(month).sortedByDescending { it.time }
-    val total = list.sumOf { it.amount }
-    val byCategory = list.groupBy { it.category }
-        .mapValues { (_, v) -> v.sumOf { it.amount } }
-        .entries.sortedByDescending { it.value }
-    val byDay = list.groupBy { it.localDate(zone) }.entries.sortedByDescending { it.key }
-    val budget = settings.monthlyBudget
-    val autoOn = settings.autoRecord && AutoRecord.isPermissionGranted(context)
-
-    val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { it.write(ledger.toCsv().toByteArray()) }
-            }.onSuccess { context.toast("已匯出 ${ledger.entries.size} 筆記帳") }
-                .onFailure { context.toast("匯出失敗：${it.message}") }
-        }
-    }
 
     Box(
         Modifier
@@ -114,251 +105,455 @@ fun LedgerScreen(
                 TopAppBar(
                     title = {
                         Column {
-                            Text("記帳", fontWeight = FontWeight.SemiBold)
-                            Text("LEDGER // ${ledger.entries.size} RECORDS", style = MonoLabel, color = Hud.Cyan)
+                            Text(
+                                when (tab) {
+                                    1 -> "圖表"
+                                    2 -> "帳戶"
+                                    3 -> "記帳設定"
+                                    else -> "記帳"
+                                },
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                when (tab) {
+                                    1 -> "LEDGER // CHARTS"
+                                    2 -> "LEDGER // ACCOUNTS"
+                                    3 -> "LEDGER // CONFIG"
+                                    else -> "LEDGER // ${ledger.entries.size} RECORDS"
+                                },
+                                style = MonoLabel,
+                                color = Hud.Cyan,
+                            )
                         }
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                     },
-                    actions = {
-                        Box {
-                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "選單") }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("每月預算") },
-                                    onClick = { menu = false; budgetDialog = true },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("自動記帳設定／通知紀錄") },
-                                    onClick = { menu = false; onAutoSetup() },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("匯出 CSV（Excel）") },
-                                    onClick = { menu = false; csvLauncher.launch("記帳-${LocalDate.now()}.csv") },
-                                )
-                            }
-                        }
-                    },
                     colors = hudTopBarColors(),
                 )
             },
-            floatingActionButton = {
-                ExtendedFloatingActionButton(
-                    onClick = onAdd,
-                    icon = { Icon(Icons.Filled.Add, null) },
-                    text = { Text("記一筆", fontWeight = FontWeight.SemiBold) },
-                    containerColor = Hud.Cyan,
-                    contentColor = Hud.Bg,
-                    shape = RoundedCornerShape(10.dp),
-                )
-            },
+            bottomBar = { LedgerBottomBar(tab, onTab = { tab = it }, onAdd = onAdd) },
         ) { padding ->
-            LazyColumn(
+            Box(
                 Modifier
                     .padding(padding)
-                    .fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 100.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .fillMaxSize()
             ) {
-                // 月份切換
-                item(key = "month") {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        IconButton(onClick = { monthText = month.minusMonths(1).toString() }) {
-                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "上個月", tint = Hud.Cyan)
-                        }
-                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("${month.year} 年 ${month.monthValue} 月", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Hud.Text)
-                            if (month == YearMonth.now()) Text("THIS MONTH", style = MonoLabel, color = Hud.TextFaint)
-                        }
-                        IconButton(
-                            onClick = { monthText = month.plusMonths(1).toString() },
-                            enabled = month < YearMonth.now(),
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                "下個月",
-                                tint = if (month < YearMonth.now()) Hud.Cyan else Hud.TextFaint,
-                            )
-                        }
-                    }
-                }
-
-                // 總覽
-                item(key = "summary") {
-                    HudPanel {
-                        Text("TOTAL SPENT // 本月支出", style = MonoLabel, color = Hud.TextDim, modifier = Modifier.padding(top = 4.dp))
-                        Text(
-                            formatMoney(total),
-                            fontFamily = Mono,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 34.sp,
-                            color = if (budget > 0 && total > budget) Hud.Danger else Hud.Text,
-                        )
-                        val days = if (month == YearMonth.now()) LocalDate.now().dayOfMonth else month.lengthOfMonth()
-                        Text(
-                            "${list.size} 筆  ·  日均 ${formatMoney(if (days > 0) Math.round(total / days).toDouble() else 0.0)}",
-                            color = Hud.TextDim,
-                            fontSize = 12.sp,
-                        )
-                        if (budget > 0) {
-                            Spacer(Modifier.height(10.dp))
-                            val ratio = (total / budget).toFloat().coerceIn(0f, 1f)
-                            val barColor = when {
-                                total > budget -> Hud.Danger
-                                ratio > 0.8f -> Hud.Warn
-                                else -> Hud.Cyan
-                            }
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(Hud.Surface3)
-                            ) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth(ratio)
-                                        .fillMaxHeight()
-                                        .background(barColor)
-                                )
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                if (total > budget) "預算 ${formatMoney(budget.toDouble())} · 超支 ${formatMoney(total - budget)}"
-                                else "預算 ${formatMoney(budget.toDouble())} · 剩 ${formatMoney(budget - total)}",
-                                color = barColor,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(bottom = 6.dp),
-                            )
-                        } else {
-                            Text(
-                                "＋ 設定每月預算",
-                                color = Hud.Cyan,
-                                fontSize = 12.sp,
-                                modifier = Modifier
-                                    .padding(vertical = 6.dp)
-                                    .clickable { budgetDialog = true },
-                            )
-                        }
-                    }
-                }
-
-                // 自動記帳狀態
-                item(key = "auto") {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background((if (autoOn) Hud.Ok else Hud.Warn).copy(alpha = 0.08f))
-                            .border(1.dp, (if (autoOn) Hud.Ok else Hud.Warn).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                            .clickable(onClick = onAutoSetup)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            Modifier
-                                .size(8.dp)
-                                .background(if (autoOn) Hud.Ok else Hud.Warn, RoundedCornerShape(4.dp))
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            if (autoOn) "LINE Pay 自動記帳運作中" else "開啟 LINE Pay 自動記帳",
-                            color = if (autoOn) Hud.Ok else Hud.Warn,
-                            fontSize = 13.sp,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = Hud.TextDim)
-                    }
-                }
-
-                // 分類統計
-                if (byCategory.isNotEmpty()) {
-                    item(key = "cats") {
-                        HudPanel {
-                            Text("BY CATEGORY // 分類", style = MonoLabel, color = Hud.TextDim, modifier = Modifier.padding(vertical = 4.dp))
-                            byCategory.forEach { (cat, sum) ->
-                                val c = Color(Categories.color(cat))
-                                val ratio = if (total > 0) (sum / total).toFloat() else 0f
-                                Row(
-                                    Modifier.padding(vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(cat, color = Hud.Text, fontSize = 13.sp, modifier = Modifier.width(44.dp))
-                                    Box(
-                                        Modifier
-                                            .weight(1f)
-                                            .height(8.dp)
-                                            .clip(RoundedCornerShape(2.dp))
-                                            .background(Hud.Surface3)
-                                    ) {
-                                        Box(
-                                            Modifier
-                                                .fillMaxWidth(ratio.coerceIn(0.02f, 1f))
-                                                .fillMaxHeight()
-                                                .background(c)
-                                        )
-                                    }
-                                    Text(
-                                        formatMoney(sum),
-                                        fontFamily = Mono,
-                                        fontSize = 12.sp,
-                                        color = Hud.Text,
-                                        modifier = Modifier.width(78.dp).padding(start = 8.dp),
-                                        maxLines = 1,
-                                    )
-                                    Text(
-                                        "${Math.round(ratio * 100)}%",
-                                        style = MonoLabel,
-                                        color = Hud.TextDim,
-                                        modifier = Modifier.width(34.dp),
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
-                        }
-                    }
-                }
-
-                if (list.isEmpty()) {
-                    item(key = "empty") {
-                        Text(
-                            "NO RECORDS // 這個月還沒有記帳\n按右下角「記一筆」，或開啟 LINE Pay 自動記帳",
-                            color = Hud.TextDim,
-                            fontSize = 13.sp,
-                            lineHeight = 20.sp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 32.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        )
-                    }
-                }
-
-                // 依日期列出
-                byDay.forEach { (date, entries) ->
-                    item(key = "d_$date") {
-                        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("//", style = MonoLabel, color = Hud.Cyan)
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "${date.monthValue}/${date.dayOfMonth}（${date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.TAIWAN)}）",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Hud.Text,
-                            )
-                            Spacer(Modifier.weight(1f))
-                            Text(formatMoney(entries.sumOf { it.amount }), style = MonoLabel, color = Hud.TextDim)
-                        }
-                    }
-                    items(entries, key = { it.id }) { e -> EntryRow(e, zone) { onEdit(e.id) } }
+                when (tab) {
+                    1 -> LedgerChartsTab(ledger, month, onMonth = { monthText = it.toString() })
+                    2 -> LedgerAccountsTab(ledger)
+                    3 -> LedgerSettingsTab(ledger, settings, onAutoSetup)
+                    else -> LedgerDetailTab(
+                        ledger = ledger,
+                        settings = settings,
+                        month = month,
+                        onMonth = { monthText = it.toString() },
+                        onEdit = onEdit,
+                        onAutoSetup = onAutoSetup,
+                    )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun LedgerBottomBar(tab: Int, onTab: (Int) -> Unit, onAdd: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(Hud.Surface.copy(alpha = 0.97f))
+            .navigationBarsPadding()
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Hud.Line)
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 64.dp)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NavItem("明細", Icons.AutoMirrored.Filled.List, tab == 0, Modifier.weight(1f)) { onTab(0) }
+            NavItem("圖表", Icons.Filled.DateRange, tab == 1, Modifier.weight(1f)) { onTab(1) }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .offset(y = (-10).dp)
+                        .size(58.dp)
+                        .clip(CircleShape)
+                        .background(Hud.Cyan)
+                        .clickable(onClick = onAdd),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Filled.Add, "記一筆", tint = Hud.Bg, modifier = Modifier.size(30.dp)) }
+            }
+            NavItem("帳戶", Icons.Filled.Home, tab == 2, Modifier.weight(1f)) { onTab(2) }
+            NavItem("設定", Icons.Filled.Settings, tab == 3, Modifier.weight(1f)) { onTab(3) }
+        }
+    }
+}
+
+@Composable
+private fun NavItem(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, null, tint = if (selected) Hud.Cyan else Hud.TextFaint, modifier = Modifier.size(24.dp))
+        Text(label, fontSize = 12.sp, color = if (selected) Hud.Cyan else Hud.TextDim)
+    }
+}
+
+/** 分類圖示：彩色圓底 + emoji。 */
+@Composable
+fun CategoryIcon(cat: Category, size: Dp = 40.dp, selected: Boolean = false) {
+    val c = Color(cat.color)
+    Box(
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(if (selected) c.copy(alpha = 0.85f) else c.copy(alpha = 0.16f))
+            .border(1.dp, c.copy(alpha = if (selected) 1f else 0.55f), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(cat.emoji, fontSize = (size.value * 0.46f).sp)
+    }
+}
+
+/** 月份選擇（年/月方塊，點開清單）。 */
+@Composable
+fun MonthBox(month: YearMonth, months: List<YearMonth>, onMonth: (YearMonth) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Hud.Surface2)
+            .border(1.dp, Hud.LineBright, RoundedCornerShape(8.dp))
+            .clickable { open = true }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("${month.year}年", style = MonoLabel, color = Hud.TextDim)
+        Text("${month.monthValue}月 ▾", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Hud.Text)
+    }
+    if (open) {
+        val list = (months + (0L..23L).map { YearMonth.now().minusMonths(it) }).distinct().sortedDescending()
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text("選擇月份") },
+            text = {
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(list) { m ->
+                        Text(
+                            "${m.year} 年 ${m.monthValue} 月" + if (m == YearMonth.now()) "（本月）" else "",
+                            color = if (m == month) Hud.Cyan else Hud.Text,
+                            fontSize = 16.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onMonth(m)
+                                    open = false
+                                }
+                                .padding(vertical = 12.dp),
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { open = false }) { Text("關閉") } },
+        )
+    }
+}
+
+// ================= 明細 =================
+
+@Composable
+private fun LedgerDetailTab(
+    ledger: LedgerRepository,
+    settings: AppSettings,
+    month: YearMonth,
+    onMonth: (YearMonth) -> Unit,
+    onEdit: (String) -> Unit,
+    onAutoSetup: () -> Unit,
+) {
+    val context = LocalContext.current
+    val zone = ZoneId.systemDefault()
+    val list = ledger.monthEntries(month).sortedByDescending { it.time }
+    val expense = list.filter { it.isExpense }.sumOf { it.amount }
+    val income = list.filter { it.isIncome }.sumOf { it.amount }
+    val byDay = list.groupBy { it.localDate(zone) }.entries.sortedByDescending { it.key }
+    val budget = settings.monthlyBudget
+    val autoOn = settings.autoRecord && AutoRecord.isPermissionGranted(context)
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item(key = "header") {
+            HudPanel {
+                Row(
+                    Modifier.padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    MonthBox(month, ledger.activeMonths(), onMonth)
+                    Spacer(Modifier.width(12.dp))
+                    SummaryCell("支出", expense, Hud.Text, Modifier.weight(1f))
+                    SummaryCell("收入", income, Hud.Ok, Modifier.weight(1f))
+                    SummaryCell("結餘", income - expense, if (income - expense < 0) Hud.Danger else Hud.Cyan, Modifier.weight(1f))
+                }
+                if (budget > 0) {
+                    val ratio = (expense / budget).toFloat().coerceIn(0f, 1f)
+                    val barColor = when {
+                        expense > budget -> Hud.Danger
+                        ratio > 0.8f -> Hud.Warn
+                        else -> Hud.Cyan
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Hud.Surface3)
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth(ratio)
+                                .fillMaxHeight()
+                                .background(barColor)
+                        )
+                    }
+                    Text(
+                        if (expense > budget) "預算 ${formatMoney(budget.toDouble())} · 超支 ${formatMoney(expense - budget)}"
+                        else "預算 ${formatMoney(budget.toDouble())} · 剩 ${formatMoney(budget - expense)}",
+                        color = barColor,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 6.dp),
+                    )
+                }
+            }
+        }
+
+        if (!autoOn) {
+            item(key = "auto") {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Hud.Warn.copy(alpha = 0.08f))
+                        .border(1.dp, Hud.Warn.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .clickable(onClick = onAutoSetup)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("開啟 LINE Pay 自動記帳", color = Hud.Warn, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = Hud.TextDim)
+                }
+            }
+        }
+
+        if (list.isEmpty()) {
+            item(key = "empty") {
+                Text(
+                    "NO RECORDS // 這個月還沒有記帳\n按下方「＋」記一筆",
+                    color = Hud.TextDim,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 40.dp),
+                )
+            }
+        }
+
+        byDay.forEach { (date, entries) ->
+            item(key = "d_$date") {
+                val dayExp = entries.filter { it.isExpense }.sumOf { it.amount }
+                val dayInc = entries.filter { it.isIncome }.sumOf { it.amount }
+                Row(Modifier.padding(top = 10.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${date.monthValue}月${date.dayOfMonth}日  ${date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.TAIWAN)}" +
+                            if (date == LocalDate.now()) "  今天" else "",
+                        fontSize = 13.sp,
+                        color = Hud.TextDim,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        listOfNotNull(
+                            if (dayInc > 0) "收入 ${formatNumber(dayInc)}" else null,
+                            if (dayExp > 0) "支出 ${formatNumber(dayExp)}" else null,
+                        ).joinToString("  "),
+                        style = MonoLabel,
+                        color = Hud.TextDim,
+                    )
+                }
+            }
+            items(entries, key = { it.id }) { e -> EntryRow(ledger, e, zone) { onEdit(e.id) } }
+        }
+    }
+}
+
+@Composable
+private fun SummaryCell(label: String, value: Double, color: Color, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, fontSize = 12.sp, color = Hud.TextDim)
+        Text(
+            formatNumber(value),
+            fontFamily = Mono,
+            fontWeight = FontWeight.Bold,
+            fontSize = 17.sp,
+            color = color,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun EntryRow(ledger: LedgerRepository, e: LedgerEntry, zone: ZoneId, onClick: () -> Unit) {
+    val cat = ledger.category(e.category, e.type)
+    val t = Instant.ofEpochMilli(e.time).atZone(zone)
+    val accName = ledger.account(e.account)?.name.orEmpty()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Hud.Surface.copy(alpha = 0.9f))
+            .border(1.dp, Hud.Line, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (e.isTransfer) {
+            CategoryIcon(Category("轉帳", "🔁", 0xFF38E8FF), 38.dp)
+        } else {
+            CategoryIcon(cat, 38.dp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(e.title, color = Hud.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val sub = if (e.isTransfer) {
+                "${accName.ifBlank { "?" }} → ${ledger.account(e.toAccount)?.name ?: "?"}"
+            } else {
+                listOf(
+                    String.format(Locale.US, "%02d:%02d", t.hour, t.minute),
+                    if (e.title != e.category) e.category else "",
+                    accName,
+                ).filter { it.isNotBlank() }.joinToString("  ·  ")
+            }
+            Text(
+                sub,
+                style = MonoLabel.copy(fontSize = 10.sp, letterSpacing = 0.5.sp),
+                color = Hud.TextDim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (e.isAuto) {
+            HudTag("AUTO", Hud.Ok)
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(
+            when {
+                e.isIncome -> "+" + formatNumber(e.amount)
+                e.isTransfer -> formatNumber(e.amount)
+                else -> "-" + formatNumber(e.amount)
+            },
+            fontFamily = Mono,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
+            color = when {
+                e.isIncome -> Hud.Ok
+                e.isTransfer -> Hud.TextDim
+                else -> Hud.Text
+            },
+        )
+    }
+}
+
+// ================= 設定 =================
+
+@Composable
+private fun LedgerSettingsTab(ledger: LedgerRepository, settings: AppSettings, onAutoSetup: () -> Unit) {
+    val context = LocalContext.current
+    var budgetDialog by remember { mutableStateOf(false) }
+    var accountDialog by remember { mutableStateOf(false) }
+    var categoryDialog by remember { mutableStateOf(false) }
+
+    val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(ledger.toCsv().toByteArray()) }
+            }.onSuccess { context.toast("已匯出 ${ledger.entries.size} 筆記帳") }
+                .onFailure { context.toast("匯出失敗：${it.message}") }
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        HudPanel {
+            SettingRow("每月預算", if (settings.monthlyBudget > 0) formatMoney(settings.monthlyBudget.toDouble()) else "未設定") {
+                budgetDialog = true
+            }
+            HudDivider()
+            SettingRow("預設帳戶", ledger.account(ledger.defaultAccount)?.name ?: "未設定") { accountDialog = true }
+            HudDivider()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { ledger.autoPopupAccount = !ledger.autoPopupAccount }
+                    .padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("記帳時自動彈出帳戶選單", color = Hud.Text, fontSize = 15.sp)
+                    Text("每次新增時先選帳戶", color = Hud.TextDim, fontSize = 12.sp)
+                }
+                Switch(
+                    checked = ledger.autoPopupAccount,
+                    onCheckedChange = { ledger.autoPopupAccount = it },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Hud.Bg,
+                        checkedTrackColor = Hud.Cyan,
+                        uncheckedThumbColor = Hud.TextDim,
+                        uncheckedTrackColor = Hud.Surface2,
+                        uncheckedBorderColor = Hud.LineBright,
+                    ),
+                )
+            }
+            HudDivider()
+            SettingRow("分類管理", "新增自訂分類（${ledger.customCategories.size} 個）") { categoryDialog = true }
+        }
+        HudPanel {
+            SettingRow(
+                "自動記帳",
+                if (settings.autoRecord && AutoRecord.isPermissionGranted(context)) "LINE Pay 付款通知：運作中" else "LINE Pay 付款通知：未開啟",
+                onAutoSetup,
+            )
+            HudDivider()
+            SettingRow("匯出 CSV", "Excel 可直接開啟，共 ${ledger.entries.size} 筆") {
+                csvLauncher.launch("記帳-${LocalDate.now()}.csv")
+            }
+        }
+        Text(
+            "記帳資料也會包含在「設定 → 匯出備份」中。",
+            color = Hud.TextFaint,
+            fontSize = 12.sp,
+        )
+    }
 
     if (budgetDialog) {
-        var text by remember { mutableStateOf(if (budget > 0) budget.toString() else "") }
+        var text by remember { mutableStateOf(if (settings.monthlyBudget > 0) settings.monthlyBudget.toString() else "") }
         AlertDialog(
             onDismissRequest = { budgetDialog = false },
             title = { Text("每月預算") },
@@ -381,54 +576,58 @@ fun LedgerScreen(
             dismissButton = { TextButton(onClick = { budgetDialog = false }) { Text("取消") } },
         )
     }
+    if (accountDialog) {
+        AccountPickerDialog(ledger, ledger.defaultAccount, onPick = {
+            ledger.defaultAccount = it
+            accountDialog = false
+        }, onDismiss = { accountDialog = false })
+    }
+    if (categoryDialog) {
+        CategoryManagerDialog(ledger, onDismiss = { categoryDialog = false })
+    }
 }
 
 @Composable
-private fun EntryRow(e: LedgerEntry, zone: ZoneId, onClick: () -> Unit) {
-    val c = Color(Categories.color(e.category))
-    val t = Instant.ofEpochMilli(e.time).atZone(zone)
+private fun SettingRow(title: String, desc: String, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Hud.Surface.copy(alpha = 0.9f))
-            .border(1.dp, Hud.Line, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier
-                .size(34.dp)
-                .background(c.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
-                .border(1.dp, c.copy(alpha = 0.6f), RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center,
-        ) { Text(e.category.take(1), color = c, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
-        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                e.merchant.ifBlank { e.category },
-                color = Hud.Text,
-                fontSize = 15.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                listOf(
-                    String.format(Locale.US, "%02d:%02d", t.hour, t.minute),
-                    e.method,
-                    e.note,
-                ).filter { it.isNotBlank() }.joinToString("  ·  "),
-                style = MonoLabel.copy(fontSize = 10.sp, letterSpacing = 0.5.sp),
-                color = Hud.TextDim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Text(title, color = Hud.Text, fontSize = 15.sp)
+            Text(desc, color = Hud.TextDim, fontSize = 12.sp)
         }
-        if (e.isAuto) {
-            HudTag("AUTO", Hud.Ok)
-            Spacer(Modifier.width(8.dp))
-        }
-        Text(formatMoney(e.amount), fontFamily = Mono, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Hud.Text)
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = Hud.TextFaint)
     }
+}
+
+/** 選帳戶（對話框版，設定頁用）。 */
+@Composable
+fun AccountPickerDialog(ledger: LedgerRepository, current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("選擇帳戶") },
+        text = {
+            Column {
+                ledger.accounts.forEach { a ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(a.id) }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(a.emoji, fontSize = 20.sp)
+                        Spacer(Modifier.width(12.dp))
+                        Text(a.name, color = if (a.id == current) Hud.Cyan else Hud.Text, modifier = Modifier.weight(1f))
+                        if (a.id == current) Icon(Icons.Filled.Star, null, tint = Hud.Cyan, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("關閉") } },
+    )
 }

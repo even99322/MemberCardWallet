@@ -2,6 +2,7 @@ package com.even.membercards.data
 
 import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -11,6 +12,12 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.util.Locale
 import java.util.UUID
+
+object EntryType {
+    const val EXPENSE = "expense"
+    const val INCOME = "income"
+    const val TRANSFER = "transfer"
+}
 
 data class LedgerEntry(
     val id: String = UUID.randomUUID().toString(),
@@ -24,14 +31,26 @@ data class LedgerEntry(
     val source: String = "manual",
     /** 自動記帳的去重複用 key */
     val key: String = "",
+    val type: String = EntryType.EXPENSE,
+    /** 帳戶 id（轉帳時為轉出帳戶） */
+    val account: String = "",
+    /** 轉帳的轉入帳戶 id */
+    val toAccount: String = "",
 ) {
     val isAuto: Boolean get() = source == "auto"
+    val isExpense: Boolean get() = type == EntryType.EXPENSE
+    val isIncome: Boolean get() = type == EntryType.INCOME
+    val isTransfer: Boolean get() = type == EntryType.TRANSFER
+
+    /** 列表上顯示的標題：備註 → 商家 → 分類 */
+    val title: String get() = note.ifBlank { merchant }.ifBlank { if (isTransfer) "轉帳" else category }
 
     fun localDate(zone: ZoneId = ZoneId.systemDefault()): LocalDate = Instant.ofEpochMilli(time).atZone(zone).toLocalDate()
 
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("time", time).put("amount", amount).put("merchant", merchant)
         .put("category", category).put("method", method).put("note", note).put("source", source).put("key", key)
+        .put("type", type).put("account", account).put("toAccount", toAccount)
 
     companion object {
         fun fromJson(o: JSONObject) = LedgerEntry(
@@ -39,14 +58,169 @@ data class LedgerEntry(
             time = o.optLong("time", System.currentTimeMillis()),
             amount = o.optDouble("amount", 0.0),
             merchant = o.optString("merchant"),
-            category = o.optString("category", "其他").ifBlank { "其他" },
+            category = Categories.migrate(o.optString("category", "其他").ifBlank { "其他" }),
             method = o.optString("method"),
             note = o.optString("note"),
             source = o.optString("source", "manual"),
             key = o.optString("key"),
+            type = o.optString("type", EntryType.EXPENSE).ifBlank { EntryType.EXPENSE },
+            account = o.optString("account"),
+            toAccount = o.optString("toAccount"),
         )
     }
 }
+
+data class Account(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    /** cash / bank / credit / virtual / other */
+    val type: String = "cash",
+    val initial: Double = 0.0,
+    val emoji: String = "💵",
+) {
+    val isCredit: Boolean get() = type == "credit"
+
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("type", type)
+        .put("initial", initial).put("emoji", emoji)
+
+    companion object {
+        val typeLabels = linkedMapOf(
+            "bank" to "銀行",
+            "cash" to "現金",
+            "credit" to "信用卡",
+            "virtual" to "虛擬帳戶",
+            "other" to "其他",
+        )
+        val typeEmoji = mapOf("bank" to "🏦", "cash" to "💵", "credit" to "💳", "virtual" to "📱", "other" to "💼")
+
+        fun fromJson(o: JSONObject) = Account(
+            id = o.optString("id").ifBlank { UUID.randomUUID().toString() },
+            name = o.optString("name", "帳戶"),
+            type = o.optString("type", "cash"),
+            initial = o.optDouble("initial", 0.0),
+            emoji = o.optString("emoji").ifBlank { typeEmoji[o.optString("type", "cash")] ?: "💵" },
+        )
+    }
+}
+
+data class Category(
+    val name: String,
+    val emoji: String,
+    val color: Long,
+    val type: String = EntryType.EXPENSE,
+    val custom: Boolean = false,
+) {
+    fun toJson(): JSONObject = JSONObject().put("name", name).put("emoji", emoji).put("color", color).put("type", type)
+
+    companion object {
+        fun fromJson(o: JSONObject) = Category(
+            name = o.optString("name"),
+            emoji = o.optString("emoji", "🏷️"),
+            color = o.optLong("color", 0xFF8A9BB3),
+            type = o.optString("type", EntryType.EXPENSE),
+            custom = true,
+        )
+    }
+}
+
+object Categories {
+    val expense = listOf(
+        Category("食物", "🍱", 0xFF3CFFA0),
+        Category("零食飲料", "🧋", 0xFFFFC53D),
+        Category("購物", "🛒", 0xFFFF8A3D),
+        Category("超商", "🏪", 0xFF00B894),
+        Category("娛樂", "🎤", 0xFFE45CFF),
+        Category("課金", "💎", 0xFF8B7CFF),
+        Category("周邊", "🧸", 0xFFFF7EB6),
+        Category("訂閱", "📺", 0xFFFFB547),
+        Category("教育", "📚", 0xFFFF6B3D),
+        Category("運動", "🏊", 0xFF38E8FF),
+        Category("旅遊", "✈️", 0xFF4FC3F7),
+        Category("交通", "🚌", 0xFFC98A7A),
+        Category("醫療", "🏥", 0xFF5B8CFF),
+        Category("社交", "👥", 0xFFB39DDB),
+        Category("居家", "🏠", 0xFF8D6E63),
+        Category("其他", "💲", 0xFF8A9BB3),
+    )
+    val income = listOf(
+        Category("薪水", "💰", 0xFFFFC53D, EntryType.INCOME),
+        Category("獎金", "🎁", 0xFFFF8A3D, EntryType.INCOME),
+        Category("投資", "📈", 0xFF3CFFA0, EntryType.INCOME),
+        Category("兼職", "💼", 0xFF38E8FF, EntryType.INCOME),
+        Category("轉帳充正", "🔁", 0xFF4FC3F7, EntryType.INCOME),
+        Category("退款", "↩️", 0xFF8B7CFF, EntryType.INCOME),
+        Category("其他收入", "💲", 0xFF8A9BB3, EntryType.INCOME),
+    )
+
+    /** 舊版分類名稱轉成新版 */
+    fun migrate(old: String): String = when (old) {
+        "餐飲" -> "食物"
+        "生活" -> "居家"
+        else -> old
+    }
+
+    private val defaultNotes = mapOf(
+        "食物" to listOf("早餐", "午餐", "晚餐", "宵夜", "甜點", "零食"),
+        "零食飲料" to listOf("飲料", "咖啡", "零食", "手搖"),
+        "交通" to listOf("加油", "捷運", "停車", "高鐵", "計程車"),
+        "訂閱" to listOf("Netflix", "Spotify", "YouTube", "iCloud"),
+        "購物" to listOf("衣服", "日用品", "網購"),
+        "超商" to listOf("7-11", "全家", "萊爾富"),
+        "居家" to listOf("房租", "水電", "網路", "電話費"),
+        "醫療" to listOf("看診", "藥品"),
+        "薪水" to listOf("月薪", "加班費"),
+    )
+
+    fun defaultNotes(category: String): List<String> = defaultNotes[category].orEmpty()
+
+    private val keywords = linkedMapOf(
+        "超商" to listOf("全家", "familymart", "7-eleven", "7-11", "711", "統一超商", "萊爾富", "hi-life", "ok超商", "ok mart"),
+        "零食飲料" to listOf("星巴克", "starbucks", "路易莎", "louisa", "咖啡", "cafe", "coffee", "茶", "飲", "50嵐", "清心", "可不可"),
+        "食物" to listOf(
+            "麥當勞", "mcdonald", "摩斯", "mos", "肯德基", "kfc", "必勝客", "pizza", "拉亞", "早餐",
+            "餐", "食", "飯", "麵", "鍋", "壽司", "uber eats", "foodpanda",
+        ),
+        "交通" to listOf("台鐵", "高鐵", "捷運", "uber", "計程車", "taxi", "加油", "中油", "台塑", "停車", "ubike", "客運", "etag"),
+        "購物" to listOf(
+            "全聯", "家樂福", "carrefour", "costco", "好市多", "ikea", "宜得利", "nitori", "momo", "蝦皮", "shopee", "pchome",
+            "屈臣氏", "watsons", "康是美", "寶雅", "大創", "daiso", "無印", "muji", "uniqlo", "百貨", "商場", "outlet",
+        ),
+        "訂閱" to listOf("netflix", "spotify", "youtube", "icloud", "google one", "disney", "claude", "chatgpt", "kkbox"),
+        "娛樂" to listOf("威秀", "影城", "電影", "steam", "playstation", "nintendo", "ktv", "遊戲"),
+        "醫療" to listOf("醫院", "診所", "藥局", "藥", "牙醫", "醫"),
+        "居家" to listOf("電費", "水費", "瓦斯", "電信", "中華電信", "遠傳", "台灣大", "洗衣", "房租"),
+    )
+
+    /** 依商家名稱（以及同名會員卡所在的資料夾）猜支出分類。 */
+    fun guess(merchant: String, cards: List<MemberCard> = emptyList()): String {
+        val m = merchant.lowercase()
+        if (m.isBlank()) return "其他"
+        cards.firstOrNull { c ->
+            c.name.isNotBlank() && (m.contains(c.name.lowercase()) || c.name.lowercase().contains(m))
+        }?.folder?.let { f -> folderToCategory(f)?.let { return it } }
+        for ((cat, words) in keywords) if (words.any { m.contains(it) }) return cat
+        return "其他"
+    }
+
+    private fun folderToCategory(folder: String): String? = when {
+        expense.any { it.name == folder } -> folder
+        folder.contains("超商") -> "超商"
+        folder.contains("吃") || folder.contains("餐") || folder.contains("食") -> "食物"
+        folder.contains("飲") -> "零食飲料"
+        folder.contains("買") || folder.contains("購") || folder.contains("藥妝") -> "購物"
+        folder.contains("油") || folder.contains("車") || folder.contains("交通") -> "交通"
+        folder.contains("醫") -> "醫療"
+        folder.contains("玩") || folder.contains("娛") -> "娛樂"
+        else -> null
+    }
+}
+
+fun formatMoney(v: Double): String =
+    if (v == Math.floor(v)) "$" + String.format(Locale.US, "%,.0f", v) else "$" + String.format(Locale.US, "%,.2f", v)
+
+/** 不帶 $ 的金額：37,637 */
+fun formatNumber(v: Double): String =
+    if (v == Math.floor(v)) String.format(Locale.US, "%,.0f", v) else String.format(Locale.US, "%,.2f", v)
 
 /** 收到的付款通知（不論是否成功解析），讓使用者檢查與補記。 */
 data class CapturedNotice(
@@ -70,70 +244,34 @@ data class CapturedNotice(
     }
 }
 
-object Categories {
-    data class Cat(val name: String, val color: Long)
-
-    val all = listOf(
-        Cat("餐飲", 0xFFFF8A3D),
-        Cat("超商", 0xFF3CFFA0),
-        Cat("購物", 0xFF8B7CFF),
-        Cat("交通", 0xFF2B7BFF),
-        Cat("生活", 0xFF38E8FF),
-        Cat("娛樂", 0xFFE45CFF),
-        Cat("醫療", 0xFFFF5470),
-        Cat("其他", 0xFF8A9BB3),
-    )
-
-    fun color(name: String): Long = all.firstOrNull { it.name == name }?.color ?: 0xFF8A9BB3
-
-    private val keywords = linkedMapOf(
-        "超商" to listOf("全家", "familymart", "7-eleven", "7-11", "711", "統一超商", "萊爾富", "hi-life", "ok超商", "ok mart"),
-        "餐飲" to listOf(
-            "麥當勞", "mcdonald", "摩斯", "mos", "星巴克", "starbucks", "路易莎", "louisa", "咖啡", "cafe", "coffee",
-            "肯德基", "kfc", "必勝客", "pizza", "拉亞", "早餐", "餐", "食", "飯", "麵", "鍋", "茶", "飲", "壽司", "uber eats", "foodpanda",
-        ),
-        "交通" to listOf("台鐵", "高鐵", "捷運", "uber", "計程車", "taxi", "加油", "中油", "台塑", "停車", "ubike", "客運", "etag"),
-        "購物" to listOf(
-            "全聯", "家樂福", "carrefour", "costco", "好市多", "ikea", "宜得利", "nitori", "momo", "蝦皮", "shopee", "pchome",
-            "屈臣氏", "watsons", "康是美", "寶雅", "大創", "daiso", "無印", "muji", "uniqlo", "百貨", "商場", "outlet",
-        ),
-        "娛樂" to listOf("威秀", "影城", "電影", "netflix", "spotify", "youtube", "steam", "playstation", "kkbox", "遊戲"),
-        "醫療" to listOf("醫院", "診所", "藥局", "藥", "牙醫", "醫"),
-        "生活" to listOf("電費", "水費", "瓦斯", "電信", "中華電信", "遠傳", "台灣大", "洗衣", "美髮"),
-    )
-
-    /** 依商家名稱（以及同名會員卡所在的資料夾）猜分類。 */
-    fun guess(merchant: String, cards: List<MemberCard> = emptyList()): String {
-        val m = merchant.lowercase()
-        if (m.isBlank()) return "其他"
-        cards.firstOrNull { c ->
-            c.name.isNotBlank() && (m.contains(c.name.lowercase()) || c.name.lowercase().contains(m))
-        }?.folder?.let { f -> folderToCategory(f)?.let { return it } }
-        for ((cat, words) in keywords) if (words.any { m.contains(it) }) return cat
-        return "其他"
-    }
-
-    private fun folderToCategory(folder: String): String? = when {
-        all.any { it.name == folder } -> folder
-        folder.contains("超商") -> "超商"
-        folder.contains("吃") || folder.contains("餐") || folder.contains("食") || folder.contains("飲") -> "餐飲"
-        folder.contains("買") || folder.contains("購") || folder.contains("藥妝") -> "購物"
-        folder.contains("油") || folder.contains("車") || folder.contains("交通") -> "交通"
-        folder.contains("醫") -> "醫療"
-        folder.contains("玩") || folder.contains("娛") -> "娛樂"
-        else -> null
-    }
-}
-
-fun formatMoney(v: Double): String =
-    if (v == Math.floor(v)) "$" + String.format(Locale.US, "%,.0f", v) else "$" + String.format(Locale.US, "%,.2f", v)
-
 class LedgerRepository private constructor(context: Context) {
     private val file = File(context.filesDir, "ledger.json")
+    private val metaFile = File(context.filesDir, "ledger_meta.json")
     private val captureFile = File(context.filesDir, "captures.json")
 
     val entries = mutableStateListOf<LedgerEntry>()
     val captures = mutableStateListOf<CapturedNotice>()
+    val accounts = mutableStateListOf<Account>()
+    val customCategories = mutableStateListOf<Category>()
+
+    private val defaultAccountState = mutableStateOf("")
+    private val autoPopupState = mutableStateOf(false)
+
+    /** 新增記帳時預設的帳戶 id */
+    var defaultAccount: String
+        get() = defaultAccountState.value.takeIf { id -> accounts.any { it.id == id } } ?: accounts.firstOrNull()?.id.orEmpty()
+        set(v) {
+            defaultAccountState.value = v
+            saveMeta()
+        }
+
+    /** 新增記帳時自動彈出帳戶選單 */
+    var autoPopupAccount: Boolean
+        get() = autoPopupState.value
+        set(v) {
+            autoPopupState.value = v
+            saveMeta()
+        }
 
     init {
         runCatching {
@@ -148,6 +286,56 @@ class LedgerRepository private constructor(context: Context) {
                 captures.addAll((0 until arr.length()).map { CapturedNotice.fromJson(arr.getJSONObject(it)) })
             }
         }
+        val metaLoaded = runCatching {
+            if (metaFile.exists()) {
+                applyMeta(JSONObject(metaFile.readText()))
+                true
+            } else {
+                false
+            }
+        }.getOrDefault(false)
+        if (!metaLoaded || accounts.isEmpty()) {
+            accounts.clear()
+            accounts.addAll(
+                listOf(
+                    Account(name = "現金", type = "cash", emoji = "💵"),
+                    Account(name = "銀行", type = "bank", emoji = "🏦"),
+                    Account(name = "信用卡", type = "credit", emoji = "💳"),
+                    Account(name = "LINE Pay", type = "virtual", emoji = "📱"),
+                )
+            )
+            saveMeta()
+        }
+    }
+
+    private fun applyMeta(o: JSONObject) {
+        o.optJSONArray("accounts")?.let { arr ->
+            accounts.clear()
+            accounts.addAll((0 until arr.length()).map { Account.fromJson(arr.getJSONObject(it)) })
+        }
+        o.optJSONArray("categories")?.let { arr ->
+            customCategories.clear()
+            customCategories.addAll((0 until arr.length()).map { Category.fromJson(arr.getJSONObject(it)) })
+        }
+        defaultAccountState.value = o.optString("defaultAccount")
+        autoPopupState.value = o.optBoolean("autoPopupAccount", false)
+    }
+
+    fun exportMeta(): JSONObject {
+        val acc = JSONArray()
+        accounts.forEach { acc.put(it.toJson()) }
+        val cats = JSONArray()
+        customCategories.forEach { cats.put(it.toJson()) }
+        return JSONObject()
+            .put("accounts", acc)
+            .put("categories", cats)
+            .put("defaultAccount", defaultAccountState.value)
+            .put("autoPopupAccount", autoPopupState.value)
+    }
+
+    fun importMeta(o: JSONObject) {
+        applyMeta(o)
+        saveMeta()
     }
 
     private fun write(f: File, content: String) {
@@ -165,11 +353,15 @@ class LedgerRepository private constructor(context: Context) {
         write(file, arr.toString())
     }
 
+    private fun saveMeta() = write(metaFile, exportMeta().toString())
+
     private fun saveCaptures() {
         val arr = JSONArray()
         captures.forEach { arr.put(it.toJson()) }
         write(captureFile, arr.toString())
     }
+
+    // ---------- 紀錄 ----------
 
     fun get(id: String): LedgerEntry? = entries.firstOrNull { it.id == id }
 
@@ -185,13 +377,16 @@ class LedgerRepository private constructor(context: Context) {
     }
 
     /**
-     * 自動記帳；重複的通知（同 key，或 2 分鐘內同金額同商家）不會重複記。
-     * 回傳新增的紀錄，重複時回傳 null。
+     * 自動記帳（支出）；重複的通知（同 key，或 2 分鐘內同金額同商家）不會重複記。
+     * 帳戶會優先選名稱與付款方式相符的帳戶（例如 LINE Pay）。
      */
     fun addAuto(amount: Double, merchant: String, method: String, key: String, category: String): LedgerEntry? {
         val now = System.currentTimeMillis()
         if (key.isNotBlank() && entries.any { it.key == key }) return null
         if (entries.any { it.isAuto && it.amount == amount && it.merchant == merchant && now - it.time < 120_000 }) return null
+        val acc = accounts.firstOrNull {
+            it.name.contains(method, ignoreCase = true) || method.contains(it.name, ignoreCase = true)
+        }?.id ?: defaultAccount
         val e = LedgerEntry(
             time = now,
             amount = amount,
@@ -200,6 +395,8 @@ class LedgerRepository private constructor(context: Context) {
             method = method,
             source = "auto",
             key = key,
+            type = EntryType.EXPENSE,
+            account = acc,
         )
         entries.add(e)
         save()
@@ -217,16 +414,100 @@ class LedgerRepository private constructor(context: Context) {
         saveCaptures()
     }
 
+    // ---------- 統計 ----------
+
     fun monthEntries(ym: YearMonth): List<LedgerEntry> {
         val zone = ZoneId.systemDefault()
         return entries.filter { YearMonth.from(Instant.ofEpochMilli(it.time).atZone(zone)) == ym }
     }
 
-    fun monthTotal(ym: YearMonth = YearMonth.now()): Double = monthEntries(ym).sumOf { it.amount }
+    fun monthExpense(ym: YearMonth = YearMonth.now()): Double = monthEntries(ym).filter { it.isExpense }.sumOf { it.amount }
+    fun monthIncome(ym: YearMonth = YearMonth.now()): Double = monthEntries(ym).filter { it.isIncome }.sumOf { it.amount }
 
-    /** 常用商家（給新增時快速選） */
-    fun recentMerchants(limit: Int = 12): List<String> =
-        entries.sortedByDescending { it.time }.map { it.merchant }.filter { it.isNotBlank() }.distinct().take(limit)
+    /** 本月支出（首頁快捷列用） */
+    fun monthTotal(ym: YearMonth = YearMonth.now()): Double = monthExpense(ym)
+
+    /** 有記帳資料的月份（含本月），新到舊 */
+    fun activeMonths(): List<YearMonth> {
+        val zone = ZoneId.systemDefault()
+        return (entries.map { YearMonth.from(Instant.ofEpochMilli(it.time).atZone(zone)) } + YearMonth.now())
+            .distinct().sortedDescending()
+    }
+
+    /** 某分類常用的備註（預設 + 歷史紀錄） */
+    fun quickNotes(category: String, limit: Int = 10): List<String> =
+        (Categories.defaultNotes(category) +
+            entries.filter { it.category == category }.sortedByDescending { it.time }.map { it.note })
+            .filter { it.isNotBlank() }.distinct().take(limit)
+
+    // ---------- 分類 ----------
+
+    fun categories(type: String): List<Category> {
+        val base = if (type == EntryType.INCOME) Categories.income else Categories.expense
+        return base + customCategories.filter { it.type == type }
+    }
+
+    fun category(name: String, type: String = EntryType.EXPENSE): Category =
+        categories(type).firstOrNull { it.name == name }
+            ?: (Categories.expense + Categories.income + customCategories).firstOrNull { it.name == name }
+            ?: Category(name, "🏷️", 0xFF8A9BB3, type)
+
+    fun addCategory(c: Category): Boolean {
+        if (c.name.isBlank() || categories(c.type).any { it.name == c.name }) return false
+        customCategories.add(c.copy(custom = true))
+        saveMeta()
+        return true
+    }
+
+    fun deleteCategory(c: Category) {
+        customCategories.removeAll { it.name == c.name && it.type == c.type }
+        saveMeta()
+    }
+
+    // ---------- 帳戶 ----------
+
+    fun account(id: String): Account? = accounts.firstOrNull { it.id == id }
+
+    fun balance(acc: Account): Double {
+        var b = acc.initial
+        for (e in entries) {
+            when (e.type) {
+                EntryType.INCOME -> if (e.account == acc.id) b += e.amount
+                EntryType.EXPENSE -> if (e.account == acc.id) b -= e.amount
+                EntryType.TRANSFER -> {
+                    if (e.account == acc.id) b -= e.amount
+                    if (e.toAccount == acc.id) b += e.amount
+                }
+            }
+        }
+        return b
+    }
+
+    fun upsertAccount(a: Account) {
+        val i = accounts.indexOfFirst { it.id == a.id }
+        if (i >= 0) accounts[i] = a else accounts.add(a)
+        saveMeta()
+    }
+
+    /** 刪除帳戶；相關紀錄保留但不再屬於任何帳戶 */
+    fun deleteAccount(id: String) {
+        accounts.removeAll { it.id == id }
+        var changed = false
+        for (i in entries.indices) {
+            val e = entries[i]
+            if (e.account == id || e.toAccount == id) {
+                entries[i] = e.copy(
+                    account = if (e.account == id) "" else e.account,
+                    toAccount = if (e.toAccount == id) "" else e.toAccount,
+                )
+                changed = true
+            }
+        }
+        if (changed) save()
+        saveMeta()
+    }
+
+    // ---------- 匯出入 ----------
 
     fun exportJson(): JSONArray {
         val arr = JSONArray()
@@ -250,16 +531,25 @@ class LedgerRepository private constructor(context: Context) {
     fun toCsv(list: List<LedgerEntry> = entries): String {
         val zone = ZoneId.systemDefault()
         fun esc(s: String) = "\"" + s.replace("\"", "\"\"") + "\""
-        val sb = StringBuilder("﻿日期,時間,金額,商家,分類,付款方式,備註,來源\n")
+        fun accName(id: String) = account(id)?.name.orEmpty()
+        val sb = StringBuilder("﻿日期,時間,類型,金額,分類,備註,商家,帳戶,轉入帳戶,付款方式,來源\n")
         list.sortedBy { it.time }.forEach { e ->
             val dt = Instant.ofEpochMilli(e.time).atZone(zone)
+            val typeLabel = when (e.type) {
+                EntryType.INCOME -> "收入"
+                EntryType.TRANSFER -> "轉帳"
+                else -> "支出"
+            }
             sb.append(dt.toLocalDate()).append(',')
                 .append(String.format(Locale.US, "%02d:%02d", dt.hour, dt.minute)).append(',')
+                .append(typeLabel).append(',')
                 .append(if (e.amount == Math.floor(e.amount)) e.amount.toLong().toString() else e.amount.toString()).append(',')
-                .append(esc(e.merchant)).append(',')
                 .append(esc(e.category)).append(',')
-                .append(esc(e.method)).append(',')
                 .append(esc(e.note)).append(',')
+                .append(esc(e.merchant)).append(',')
+                .append(esc(accName(e.account))).append(',')
+                .append(esc(accName(e.toAccount))).append(',')
+                .append(esc(e.method)).append(',')
                 .append(if (e.isAuto) "自動" else "手動").append('\n')
         }
         return sb.toString()

@@ -71,6 +71,7 @@ fun SettingsScreen(
                 val json = JSONObject(repo.exportJson())
                     .put("quick", settings.quickJson())
                     .put("ledger", LedgerRepository.instance(context).exportJson())
+                    .put("ledgerMeta", LedgerRepository.instance(context).exportMeta())
                     .toString(2)
                 context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
             }.onSuccess { context.toast("已匯出 ${repo.cards.size} 張會員卡") }
@@ -84,6 +85,7 @@ fun SettingsScreen(
                     ?: error("無法讀取檔案")
                 runCatching { JSONObject(text.trim()) }.getOrNull()?.let { o ->
                     o.optJSONObject("quick")?.let { settings.applyQuickJson(it) }
+                    o.optJSONObject("ledgerMeta")?.let { LedgerRepository.instance(context).importMeta(it) }
                     o.optJSONArray("ledger")?.let { LedgerRepository.instance(context).importJson(it) }
                 }
                 repo.importJson(text)

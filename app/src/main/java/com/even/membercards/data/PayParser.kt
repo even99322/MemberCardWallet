@@ -8,10 +8,12 @@ object PayParser {
     data class Result(val amount: Double, val merchant: String)
 
     private val payWords = listOf(
-        "付款", "支付", "消費", "扣款", "交易成功", "交易完成", "已付", "結帳", "payment", "paid",
+        "付款", "支付", "消費", "扣款", "交易成功", "交易完成", "已付", "結帳", "刷卡", "簽帳", "授權成功",
+        "payment", "paid",
     )
     private val excludeWords = listOf(
         "退款", "退費", "收款", "已收到", "儲值", "入帳", "加值", "轉帳", "取消交易", "交易失敗", "付款失敗",
+        "回饋", "刷卡金", "帳單", "繳款",
     )
 
     private const val NUM = """([0-9][0-9,]*(?:\.[0-9]{1,2})?)"""

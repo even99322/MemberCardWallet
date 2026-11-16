@@ -1,5 +1,6 @@
 package com.even.membercards.ui
 
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -238,6 +239,45 @@ fun LedgerChartsTab(ledger: LedgerRepository, month: YearMonth, onMonth: (YearMo
                             Text("${i + 1}", style = MonoLabel, color = Hud.Cyan, modifier = Modifier.width(18.dp))
                             Text(name, color = Hud.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             Text("$count 筆  ", style = MonoLabel, color = Hud.TextDim)
+                            Text(formatNumber(sum), fontFamily = Mono, color = Hud.Text, fontSize = 14.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
+        }
+
+        // 消費地點
+        val located = entries.filter { it.hasLocation }
+        if (type == EntryType.EXPENSE && located.isNotEmpty()) {
+            val places = located
+                .groupBy { e -> e.place.ifBlank { String.format(Locale.US, "%.3f, %.3f", e.lat, e.lng) } }
+                .map { (name, list) -> Triple(name, list, list.sumOf { it.amount }) }
+                .sortedByDescending { it.third }
+                .take(10)
+            item(key = "places") {
+                val context = LocalContext.current
+                HudPanel {
+                    Text("PLACES // 消費地點（${located.size} 筆有位置）", style = MonoLabel, color = Hud.TextDim, modifier = Modifier.padding(vertical = 6.dp))
+                    places.forEach { (name, list, sum) ->
+                        val first = list.first()
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { openMap(context, first.lat!!, first.lng!!, first.title) }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("📍", fontSize = 13.sp, modifier = Modifier.width(22.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(name, color = Hud.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    list.map { it.title }.distinct().take(3).joinToString("、"),
+                                    color = Hud.TextDim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text("${list.size} 筆  ", style = MonoLabel, color = Hud.TextDim)
                             Text(formatNumber(sum), fontFamily = Mono, color = Hud.Text, fontSize = 14.sp)
                         }
                     }

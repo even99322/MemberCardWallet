@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- 到期／扣款／預算提醒 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 刷卡／付款時記錄消費地點 -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <!-- 讓 App 能列出並開啟手機上的店家 App -->
     <queries>

@@ -68,6 +68,11 @@ import com.even.membercards.data.Categories
 import com.even.membercards.data.EntryType
 import com.even.membercards.data.LedgerEntry
 import com.even.membercards.data.LedgerRepository
+import com.even.membercards.data.LocationTagger
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.even.membercards.data.formatNumber
 import java.time.Instant
 import java.time.LocalDate
@@ -90,6 +95,38 @@ fun LedgerEditScreen(
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
     val existing = remember(entryId) { entryId?.let { ledger.get(it) } }
+    // 位置：沒動過就用資料庫裡最新的（背景定位可能晚一點才寫入）
+    val live = existing?.let { e -> ledger.entries.firstOrNull { it.id == e.id } }
+    var locTouched by remember { mutableStateOf(false) }
+    var locLat by remember { mutableStateOf<Double?>(null) }
+    var locLng by remember { mutableStateOf<Double?>(null) }
+    var locAcc by remember { mutableStateOf(0f) }
+    var locPlace by remember { mutableStateOf("") }
+    var locating by remember { mutableStateOf(false) }
+    val showLat = if (locTouched) locLat else live?.lat
+    val showLng = if (locTouched) locLng else live?.lng
+    val showPlace = if (locTouched) locPlace else live?.place.orEmpty()
+    val locScope = rememberCoroutineScope()
+
+    fun locateNow() {
+        if (locating) return
+        locating = true
+        locScope.launch {
+            val l = LocationTagger.current(context)
+            if (l == null) {
+                locating = false
+                context.toast("定位失敗，請確認已開啟定位")
+                return@launch
+            }
+            locTouched = true
+            locLat = l.latitude; locLng = l.longitude; locAcc = l.accuracy; locPlace = ""
+            locPlace = LocationTagger.address(context, l.latitude, l.longitude)
+            locating = false
+        }
+    }
+    val locPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
+        if (r.values.any { it }) locateNow() else context.toast("需要位置權限")
+    }
 
     fun fmt(v: Double?) = when {
         v == null -> ""
@@ -176,9 +213,12 @@ fun LedgerEditScreen(
         val keepMerchant = existing?.merchant?.takeIf { it.isNotBlank() && it == n }
             ?: prefillMerchant.takeIf { existing == null && it.isNotBlank() && it == n }
             ?: ""
-        val base = existing ?: LedgerEntry(amount = v, method = prefillMethod)
+        val base = existing?.let { ledger.get(it.id) ?: it } ?: LedgerEntry(amount = v, method = prefillMethod)
+        val withLoc = if (locTouched) {
+            base.copy(lat = locLat, lng = locLng, accuracy = locAcc, place = if (locLat == null) "" else locPlace)
+        } else base
         ledger.upsert(
-            base.copy(
+            withLoc.copy(
                 amount = v,
                 type = type,
                 category = if (type == EntryType.TRANSFER) "轉帳" else category,
@@ -381,6 +421,61 @@ fun LedgerEditScreen(
                         colors = hudFieldColors(),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    // 消費地點
+                    if (type != EntryType.TRANSFER) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val lat = showLat
+                            val lng = showLng
+                            val chipMod = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Hud.Surface2)
+                                .border(1.dp, Hud.Line, RoundedCornerShape(6.dp))
+                            when {
+                                locating -> Text("📍 定位中…", color = Hud.TextDim, fontSize = 13.sp, modifier = chipMod.padding(horizontal = 10.dp, vertical = 6.dp))
+                                lat != null && lng != null -> {
+                                    Text(
+                                        "📍 " + showPlace.ifBlank { "%.5f, %.5f".format(lat, lng) },
+                                        color = Hud.Cyan,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = chipMod
+                                            .weight(1f, fill = false)
+                                            .clickable { openMap(context, lat, lng, note.ifBlank { showPlace }) }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    )
+                                    Text(
+                                        "✕",
+                                        color = Hud.TextDim,
+                                        fontSize = 14.sp,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                locTouched = true
+                                                locLat = null; locLng = null; locPlace = ""
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    )
+                                }
+                                else -> Text(
+                                    if (existing == null && settings.recordLocation) "📍 儲存時記錄目前位置" else "📍 加入目前位置",
+                                    color = Hud.TextDim,
+                                    fontSize = 13.sp,
+                                    modifier = chipMod
+                                        .clickable {
+                                            if (LocationTagger.hasPermission(context)) locateNow()
+                                            else locPermLauncher.launch(
+                                                arrayOf(
+                                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                                                )
+                                            )
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                )
+                            }
+                        }
+                    }
                     val quick = if (type == EntryType.TRANSFER) emptyList() else ledger.quickNotes(category)
                     if (quick.isNotEmpty()) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

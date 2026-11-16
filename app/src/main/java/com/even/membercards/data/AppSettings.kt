@@ -120,6 +120,25 @@ class AppSettings private constructor(context: Context) {
     }
 
     /** 快捷列的常用付款 App（依顯示順序） */
+    private val recordLocationState = mutableStateOf(prefs.getBoolean(K_RECORD_LOCATION, false))
+    private val cardAppsState = mutableStateOf(parseApps(prefs.getString(K_CARD_APPS, null)))
+
+    /** 刷卡／付款自動記帳時一併記錄位置 */
+    var recordLocation: Boolean
+        get() = recordLocationState.value
+        set(v) {
+            recordLocationState.value = v
+            prefs.edit().putBoolean(K_RECORD_LOCATION, v).apply()
+        }
+
+    /** 信用卡、行動支付的刷卡通知來源 App（銀行 App、Google 錢包…） */
+    var cardApps: List<QuickApp>
+        get() = cardAppsState.value
+        set(v) {
+            cardAppsState.value = v
+            prefs.edit().putString(K_CARD_APPS, appsToJson(v).toString()).apply()
+        }
+
     var payApps: List<QuickApp>
         get() = payState.value
         set(v) {
@@ -237,6 +256,8 @@ class AppSettings private constructor(context: Context) {
             }
         }.getOrDefault(emptyList())
         private const val K_PAY = "pay_apps"
+        private const val K_RECORD_LOCATION = "record_location"
+        private const val K_CARD_APPS = "card_apps"
         private const val K_QUICK_COLLAPSED = "quick_collapsed"
 
         /** 手機條碼載具格式：/ 加 7 碼（數字、大寫英文、+ - .） */

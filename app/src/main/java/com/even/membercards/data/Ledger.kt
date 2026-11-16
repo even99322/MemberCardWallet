@@ -36,7 +36,16 @@ data class LedgerEntry(
     val account: String = "",
     /** 轉帳的轉入帳戶 id */
     val toAccount: String = "",
+    /** 消費地點（沒有記錄時為 null） */
+    val lat: Double? = null,
+    val lng: Double? = null,
+    /** 定位精確度（公尺） */
+    val accuracy: Float = 0f,
+    /** 地址（反查得到的，可能空白） */
+    val place: String = "",
 ) {
+    val hasLocation: Boolean get() = lat != null && lng != null
+
     val isAuto: Boolean get() = source == "auto"
     val isRecurring: Boolean get() = source == "recurring"
     val isExpense: Boolean get() = type == EntryType.EXPENSE
@@ -52,6 +61,11 @@ data class LedgerEntry(
         .put("id", id).put("time", time).put("amount", amount).put("merchant", merchant)
         .put("category", category).put("method", method).put("note", note).put("source", source).put("key", key)
         .put("type", type).put("account", account).put("toAccount", toAccount)
+        .apply {
+            if (lat != null && lng != null) {
+                put("lat", lat).put("lng", lng).put("accuracy", accuracy.toDouble()).put("place", place)
+            }
+        }
 
     companion object {
         fun fromJson(o: JSONObject) = LedgerEntry(
@@ -67,6 +81,10 @@ data class LedgerEntry(
             type = o.optString("type", EntryType.EXPENSE).ifBlank { EntryType.EXPENSE },
             account = o.optString("account"),
             toAccount = o.optString("toAccount"),
+            lat = if (o.has("lat")) o.optDouble("lat") else null,
+            lng = if (o.has("lng")) o.optDouble("lng") else null,
+            accuracy = o.optDouble("accuracy", 0.0).toFloat(),
+            place = o.optString("place"),
         )
     }
 }
@@ -280,7 +298,8 @@ data class CapturedNotice(
     }
 }
 
-class LedgerRepository private constructor(context: Context) {
+class LedgerRepository private constructor(private val appContext: Context) {
+    private val context get() = appContext
     private val file = File(context.filesDir, "ledger.json")
     private val metaFile = File(context.filesDir, "ledger_meta.json")
     private val captureFile = File(context.filesDir, "captures.json")
@@ -413,6 +432,23 @@ class LedgerRepository private constructor(context: Context) {
         val i = entries.indexOfFirst { it.id == e.id }
         if (i >= 0) entries[i] = e else entries.add(e)
         save()
+        if (i < 0) maybeTagLocation(e)
+    }
+
+    /** 更新某筆紀錄的消費地點；lat 為 null 代表移除 */
+    fun setLocation(id: String, lat: Double?, lng: Double?, accuracy: Float = 0f, place: String = "") {
+        val i = entries.indexOfFirst { it.id == id }
+        if (i < 0) return
+        entries[i] = entries[i].copy(lat = lat, lng = lng, accuracy = if (lat == null) 0f else accuracy, place = if (lat == null) "" else place)
+        save()
+    }
+
+    /** 剛發生的支出（刷卡、付款）自動附上目前位置 */
+    private fun maybeTagLocation(e: LedgerEntry) {
+        if (!e.isExpense || e.isRecurring || e.hasLocation) return
+        if (kotlin.math.abs(System.currentTimeMillis() - e.time) > 30 * 60_000L) return
+        if (!AppSettings.instance(context).recordLocation) return
+        LocationTagger.tag(context, e.id)
     }
 
     fun delete(id: String) {
@@ -444,6 +480,7 @@ class LedgerRepository private constructor(context: Context) {
         )
         entries.add(e)
         save()
+        maybeTagLocation(e)
         return e
     }
 
@@ -700,7 +737,7 @@ class LedgerRepository private constructor(context: Context) {
         val zone = ZoneId.systemDefault()
         fun esc(s: String) = "\"" + s.replace("\"", "\"\"") + "\""
         fun accName(id: String) = account(id)?.name.orEmpty()
-        val sb = StringBuilder("﻿日期,時間,類型,金額,分類,備註,商家,帳戶,轉入帳戶,付款方式,來源\n")
+        val sb = StringBuilder("﻿日期,時間,類型,金額,分類,備註,商家,帳戶,轉入帳戶,付款方式,來源,地點,緯度,經度\n")
         list.sortedBy { it.time }.forEach { e ->
             val dt = Instant.ofEpochMilli(e.time).atZone(zone)
             val typeLabel = when (e.type) {
@@ -718,7 +755,10 @@ class LedgerRepository private constructor(context: Context) {
                 .append(esc(accName(e.account))).append(',')
                 .append(esc(accName(e.toAccount))).append(',')
                 .append(esc(e.method)).append(',')
-                .append(if (e.isAuto) "自動" else "手動").append('\n')
+                .append(if (e.isAuto) "自動" else "手動").append(',')
+                .append(esc(e.place)).append(',')
+                .append(e.lat?.toString() ?: "").append(',')
+                .append(e.lng?.toString() ?: "").append('\n')
         }
         return sb.toString()
     }

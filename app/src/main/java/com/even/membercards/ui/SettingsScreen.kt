@@ -67,7 +67,6 @@ fun SettingsScreen(
     onQuickSetup: () -> Unit,
     onOpenLedger: () -> Unit,
     onAutoRecord: () -> Unit,
-    onOpenInvoice: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var showFolders by remember { mutableStateOf(false) }
@@ -239,8 +238,6 @@ fun SettingsScreen(
                     NavRow("快捷列", "手機條碼載具、電話號碼、常用付款 App") { onQuickSetup() }
                     HudDivider()
                     NavRow("記帳", "本月支出、預算、分類統計、匯出 CSV") { onOpenLedger() }
-                    HudDivider()
-                    NavRow("發票對獎", "掃描紙本電子發票自動記帳、開獎自動對獎") { onOpenInvoice() }
                     HudDivider()
                     NavRow(
                         "自動記帳",

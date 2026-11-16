@@ -31,8 +31,6 @@ import com.even.membercards.ui.LedgerScreen
 import com.even.membercards.data.Shortcuts
 import com.even.membercards.data.Updater
 import com.even.membercards.ui.AppTheme
-import com.even.membercards.ui.InvoiceScreen
-import com.even.membercards.data.InvoiceRepository
 import com.even.membercards.ui.Hud
 import com.even.membercards.ui.Palettes
 import com.even.membercards.ui.DetailScreen
@@ -63,7 +61,6 @@ sealed interface Screen {
     data object Reorder : Screen
     data object Ledger : Screen
     data object AutoRecord : Screen
-    data object Invoice : Screen
     data class LedgerEdit(
         val id: String?,
         val amount: Double? = null,
@@ -102,6 +99,7 @@ class MainActivity : ComponentActivity() {
         val repo = CardRepository.instance(applicationContext)
         settings = AppSettings.instance(applicationContext)
         Hud.palette = Palettes.of(settings.theme)
+        java.io.File(filesDir, "invoices.json").delete() // 已移除的發票功能留下的檔案
         applySystemBars(Hud.palette.isLight)
         Shortcuts.updateDynamic(applicationContext, repo.cards.toList())
         ReminderWorker.schedule(applicationContext, settings.reminders)
@@ -317,7 +315,6 @@ fun App(
             onOpenSettings = { stack.add(Screen.Settings) },
             onQuickSetup = { stack.add(Screen.QuickSetup) },
             onOpenLedger = { stack.add(Screen.Ledger) },
-            onOpenInvoice = { stack.add(Screen.Invoice) },
             settings = settings,
         )
 
@@ -328,13 +325,6 @@ fun App(
             onAdd = { stack.add(Screen.LedgerEdit(null)) },
             onEdit = { stack.add(Screen.LedgerEdit(it)) },
             onAutoSetup = { stack.add(Screen.AutoRecord) },
-            onInvoice = { stack.add(Screen.Invoice) },
-        )
-
-        Screen.Invoice -> InvoiceScreen(
-            invoices = InvoiceRepository.instance(context),
-            ledger = LedgerRepository.instance(context),
-            onBack = { pop() },
         )
 
         Screen.AutoRecord -> AutoRecordScreen(
@@ -372,7 +362,6 @@ fun App(
             onQuickSetup = { stack.add(Screen.QuickSetup) },
             onOpenLedger = { stack.add(Screen.Ledger) },
             onAutoRecord = { stack.add(Screen.AutoRecord) },
-            onOpenInvoice = { stack.add(Screen.Invoice) },
             onCheckUpdate = { checkUpdate(manual = true) },
         )
 

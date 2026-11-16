@@ -63,7 +63,8 @@ class PayNotificationService : NotificationListenerService() {
                 recorded = entry.amount
                 Toast.makeText(
                     applicationContext,
-                    "已自動記帳 ${formatMoney(entry.amount)}" + if (merchant.isNotBlank()) " · $merchant" else "",
+                    "已自動記帳 ${formatMoney(entry.amount)}" + (if (merchant.isNotBlank()) " · $merchant" else "") +
+                        if (settings.recordLocation) "（記錄位置中）" else "",
                     Toast.LENGTH_SHORT,
                 ).show()
             } else {
@@ -86,6 +87,7 @@ class PayNotificationService : NotificationListenerService() {
         if (pkg == packageName) return null
         if (pkg == LINE_PACKAGE) return if (headline.contains("LINE Pay", ignoreCase = true)) "LINE Pay" else null
         if (pkg.contains("linepay", ignoreCase = true)) return "LINE Pay"
+        settings.cardApps.firstOrNull { it.pkg == pkg }?.let { return it.label }
         if (settings.captureOtherPay) {
             settings.payApps.firstOrNull { it.pkg == pkg }?.let { return it.label }
         }

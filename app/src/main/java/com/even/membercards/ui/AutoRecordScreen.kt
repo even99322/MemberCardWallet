@@ -56,6 +56,7 @@ import com.even.membercards.data.AppSettings
 import com.even.membercards.data.CapturedNotice
 import com.even.membercards.data.LedgerRepository
 import com.even.membercards.data.PayParser
+import com.even.membercards.data.QuickApp
 import com.even.membercards.data.formatMoney
 import java.time.Instant
 import java.time.ZoneId
@@ -81,6 +82,20 @@ fun AutoRecordScreen(
     onRecordFrom: (amount: Double?, merchant: String, method: String) -> Unit,
 ) {
     val context = LocalContext.current
+    var pickCardApps by remember { mutableStateOf(false) }
+    if (pickCardApps) {
+        PickAppsDialog(
+            title = "刷卡通知來源",
+            hint = "勾選會推播「刷卡／消費通知」的 App（信用卡銀行 App、Google 錢包、行動支付）。需先在該 App 開啟消費通知。",
+            initial = settings.cardApps.map { it.pkg },
+            priority = { StoreApps.looksLikePayment(it) },
+            onConfirm = { picked ->
+                settings.cardApps = picked.map { QuickApp(it.pkg, it.label) }
+                pickCardApps = false
+            },
+            onDismiss = { pickCardApps = false },
+        )
+    }
     var granted by remember { mutableStateOf(AutoRecord.isPermissionGranted(context)) }
     var testText by remember { mutableStateOf("") }
 
@@ -168,8 +183,8 @@ fun AutoRecordScreen(
                             }
                             HudDivider()
                             ToggleRow(
-                                "LINE Pay 自動記帳",
-                                "收到 LINE Pay 付款通知時自動新增一筆",
+                                "自動記帳",
+                                "收到 LINE Pay 付款、信用卡刷卡通知時自動新增一筆",
                                 settings.autoRecord,
                             ) { settings.autoRecord = it }
                             HudDivider()
@@ -179,6 +194,27 @@ fun AutoRecordScreen(
                                 else "讀取快捷列付款 App 的通知：" + settings.payApps.joinToString("、") { it.label },
                                 settings.captureOtherPay,
                             ) { settings.captureOtherPay = it }
+                            HudDivider()
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { pickCardApps = true }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("信用卡刷卡通知", color = Hud.Text, fontSize = 15.sp)
+                                    Text(
+                                        if (settings.cardApps.isEmpty()) "選擇會發刷卡通知的銀行 App、Google 錢包等，刷卡時自動記帳"
+                                        else "讀取：" + settings.cardApps.joinToString("、") { it.label },
+                                        color = Hud.TextDim,
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                                Text("選擇 ›", color = Hud.Cyan, fontSize = 13.sp)
+                            }
+                            HudDivider()
+                            RecordLocationRow(settings)
                         }
                     }
                 }

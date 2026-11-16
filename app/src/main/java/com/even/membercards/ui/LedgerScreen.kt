@@ -92,7 +92,6 @@ fun LedgerScreen(
     onAdd: () -> Unit,
     onEdit: (String) -> Unit,
     onAutoSetup: () -> Unit,
-    onInvoice: () -> Unit = {},
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var monthText by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
@@ -143,7 +142,6 @@ fun LedgerScreen(
                         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                     },
                     actions = {
-                        TextButton(onClick = onInvoice) { Text("發票", color = Hud.Cyan) }
                         if (tab == 0) {
                             IconButton(onClick = {
                                 searchOpen = !searchOpen
@@ -513,6 +511,15 @@ private fun EntryRow(ledger: LedgerRepository, e: LedgerEntry, zone: ZoneId, onC
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (e.hasLocation) {
+                Text(
+                    "📍 " + e.place.ifBlank { "已記錄位置" },
+                    fontSize = 11.sp,
+                    color = Hud.Cyan.copy(alpha = 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (e.isAuto) {
             HudTag("AUTO", Hud.Ok)
@@ -595,6 +602,8 @@ private fun LedgerSettingsTab(ledger: LedgerRepository, settings: AppSettings, o
                     ),
                 )
             }
+            HudDivider()
+            RecordLocationRow(settings)
             HudDivider()
             SettingRow("分類管理", "新增自訂分類（${ledger.customCategories.size} 個）") { categoryDialog = true }
             HudDivider()

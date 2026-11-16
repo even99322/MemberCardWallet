@@ -44,8 +44,6 @@ import androidx.compose.ui.unit.sp
 import com.even.membercards.data.AppSettings
 import com.even.membercards.data.Barcodes
 import com.even.membercards.data.CardRepository
-import com.even.membercards.data.InvoiceRepository
-import com.even.membercards.data.InvoiceRules
 import com.even.membercards.data.LedgerRepository
 import com.even.membercards.data.formatMoney
 
@@ -74,7 +72,6 @@ fun QuickBar(
     onShowCarrier: (String) -> Unit,
     onShowPhones: () -> Unit,
     onOpenLedger: () -> Unit,
-    onOpenInvoice: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -128,20 +125,6 @@ fun QuickBar(
                 }
                 Text("  記帳 ›", fontSize = 11.sp, color = Hud.Cyan)
             }
-            Spacer(Modifier.width(6.dp))
-            // 發票對獎（有中獎時亮綠色）
-            val invRepo = remember { InvoiceRepository.instance(context) }
-            val hasWin = invRepo.invoices.any { (it.prize ?: 0) > 0 && it.period >= InvoiceRules.latestDrawnPeriod() }
-            Text(
-                if (hasWin) "發票 🎉" else "發票",
-                fontSize = 11.sp,
-                color = if (hasWin) Hud.Ok else Hud.Cyan,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .border(1.dp, (if (hasWin) Hud.Ok else Hud.LineBright).copy(alpha = 0.7f), RoundedCornerShape(6.dp))
-                    .clickable(onClick = onOpenInvoice)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
             Spacer(Modifier.width(2.dp))
             Icon(
                 Icons.Filled.Edit,

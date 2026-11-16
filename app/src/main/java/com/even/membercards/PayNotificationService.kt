@@ -44,7 +44,7 @@ class PayNotificationService : NotificationListenerService() {
         if (text.isBlank()) return
 
         val headline = listOf(title, convTitle, sender.orEmpty()).filter { it.isNotBlank() }.distinct().joinToString(" · ")
-        val method = sourceMethod(sbn.packageName, headline, settings) ?: return
+        val method = sourceMethod(sbn.packageName, headline, text, settings) ?: return
 
         val ledger = LedgerRepository.instance(applicationContext)
         val result = PayParser.parse(headline, text)
@@ -83,9 +83,14 @@ class PayNotificationService : NotificationListenerService() {
     }
 
     /** 判斷通知來源是否要處理，回傳付款方式名稱。 */
-    private fun sourceMethod(pkg: String, headline: String, settings: AppSettings): String? {
+    private fun sourceMethod(pkg: String, headline: String, text: String, settings: AppSettings): String? {
         if (pkg == packageName) return null
-        if (pkg == LINE_PACKAGE) return if (headline.contains("LINE Pay", ignoreCase = true)) "LINE Pay" else null
+        if (pkg == LINE_PACKAGE) {
+            // 標題是「LINE Pay」，或內文開頭就是「LINE Pay 付款…」
+            val isPay = headline.contains("LINE Pay", ignoreCase = true) ||
+                text.trimStart().startsWith("LINE Pay", ignoreCase = true)
+            return if (isPay) "LINE Pay" else null
+        }
         if (pkg.contains("linepay", ignoreCase = true)) return "LINE Pay"
         settings.cardApps.firstOrNull { it.pkg == pkg }?.let { return it.label }
         if (settings.captureOtherPay) {

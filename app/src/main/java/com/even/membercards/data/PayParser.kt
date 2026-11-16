@@ -11,9 +11,17 @@ object PayParser {
         "付款", "支付", "消費", "扣款", "交易成功", "交易完成", "已付", "結帳", "刷卡", "簽帳", "授權成功",
         "payment", "paid",
     )
+    /** 一定不是支出 */
     private val excludeWords = listOf(
         "退款", "退費", "收款", "已收到", "儲值", "入帳", "加值", "轉帳", "取消交易", "交易失敗", "付款失敗",
-        "回饋", "刷卡金", "帳單", "繳款",
+    )
+
+    /** 通常不是支出（回饋、帳單提醒），但若有明確的付款完成字樣就不排除。
+     *  例：LINE Pay「付款完成。商店名稱: 統一超商 指定商店加碼回饋最高享16%」 */
+    private val softExcludeWords = listOf("回饋", "刷卡金", "帳單", "繳款")
+    private val strongPayWords = listOf(
+        "付款完成", "付款成功", "交易成功", "交易完成", "消費成功", "扣款成功", "已付款", "刷卡消費", "消費通知",
+        "消費金額", "交易金額", "授權成功",
     )
 
     private const val NUM = """([0-9][0-9,]*(?:\.[0-9]{1,2})?)"""
@@ -31,6 +39,7 @@ object PayParser {
     fun parse(title: String, text: String): Result? {
         val all = "$title\n$text"
         if (excludeWords.any { all.contains(it) }) return null
+        if (softExcludeWords.any { all.contains(it) } && strongPayWords.none { all.contains(it) }) return null
         if (payWords.none { all.contains(it, ignoreCase = true) }) return null
         val amount = guessAmount(all) ?: return null
         val merchant = guessMerchant(all)

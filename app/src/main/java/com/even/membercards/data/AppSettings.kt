@@ -38,6 +38,44 @@ class AppSettings private constructor(context: Context) {
         set(v) {
             themeState.value = v
             prefs.edit().putString(K_THEME, v).apply()
+            com.even.membercards.LedgerWidget.updateAll(appContext)
+        }
+
+    private val backupUriState = mutableStateOf(prefs.getString(K_BACKUP_URI, "") ?: "")
+    private val autoBackupState = mutableStateOf(prefs.getBoolean(K_AUTO_BACKUP, false))
+    private val lastBackupState = mutableStateOf(prefs.getLong(K_LAST_BACKUP, 0L))
+    private val backupErrorState = mutableStateOf(prefs.getString(K_BACKUP_ERROR, "") ?: "")
+
+    /** 雲端備份檔位置（SAF 文件網址，通常是 Google 雲端硬碟上的檔案） */
+    var backupUri: String
+        get() = backupUriState.value
+        set(v) {
+            backupUriState.value = v
+            prefs.edit().putString(K_BACKUP_URI, v).apply()
+        }
+
+    /** 每天自動備份到 backupUri */
+    var autoBackup: Boolean
+        get() = autoBackupState.value
+        set(v) {
+            autoBackupState.value = v
+            prefs.edit().putBoolean(K_AUTO_BACKUP, v).apply()
+            com.even.membercards.BackupWorker.schedule(appContext, v)
+        }
+
+    var lastBackupAt: Long
+        get() = lastBackupState.value
+        set(v) {
+            lastBackupState.value = v
+            prefs.edit().putLong(K_LAST_BACKUP, v).apply()
+        }
+
+    /** 最近一次自動備份失敗原因（成功時清空） */
+    var backupError: String
+        get() = backupErrorState.value
+        set(v) {
+            backupErrorState.value = v
+            prefs.edit().putString(K_BACKUP_ERROR, v).apply()
         }
 
     /** 卡片頁上方同時顯示載具條碼 */
@@ -160,8 +198,14 @@ class AppSettings private constructor(context: Context) {
         .put("phone", phones.firstOrNull()?.number ?: "")
         .put("phones", phonesToJson(phones))
         .put("payApps", appsToJson(payApps))
+        .put("cardApps", appsToJson(cardApps))
+        .put("theme", theme)
+        .put("recordLocation", recordLocation)
 
     fun applyQuickJson(o: JSONObject) {
+        o.optString("theme").takeIf { it.isNotBlank() }?.let { theme = it }
+        if (o.has("recordLocation")) recordLocation = o.optBoolean("recordLocation")
+        o.optJSONArray("cardApps")?.let { a -> parseApps(a.toString()).takeIf { it.isNotEmpty() }?.let { cardApps = it } }
         o.optLong("budget", 0L).takeIf { it > 0 }?.let { monthlyBudget = it }
         o.optString("carrier").takeIf { it.isNotBlank() }?.let { carrier = it }
         val arr = o.optJSONArray("phones")
@@ -257,6 +301,10 @@ class AppSettings private constructor(context: Context) {
         }.getOrDefault(emptyList())
         private const val K_PAY = "pay_apps"
         private const val K_RECORD_LOCATION = "record_location"
+        private const val K_BACKUP_URI = "backup_uri"
+        private const val K_AUTO_BACKUP = "auto_backup"
+        private const val K_LAST_BACKUP = "last_backup"
+        private const val K_BACKUP_ERROR = "backup_error"
         private const val K_CARD_APPS = "card_apps"
         private const val K_QUICK_COLLAPSED = "quick_collapsed"
 

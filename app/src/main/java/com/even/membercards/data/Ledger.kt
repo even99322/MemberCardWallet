@@ -414,6 +414,7 @@ class LedgerRepository private constructor(private val appContext: Context) {
         val arr = JSONArray()
         entries.forEach { arr.put(it.toJson()) }
         write(file, arr.toString())
+        com.even.membercards.LedgerWidget.updateAll(context)
     }
 
     private fun saveMeta() = write(metaFile, exportMeta().toString())

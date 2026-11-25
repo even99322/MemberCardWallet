@@ -1,5 +1,12 @@
 package com.even.membercards.ui
 
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import com.even.membercards.data.Backup
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,36 +84,55 @@ fun SettingsScreen(
         if (ok) settings.reminders = true else context.toast("沒有通知權限，無法提醒")
     }
 
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                // 卡片、資料夾之外，也備份快捷列（載具、手機、付款 App）
-                val json = JSONObject(repo.exportJson())
-                    .put("quick", settings.quickJson())
-                    .put("ledger", LedgerRepository.instance(context).exportJson())
-                    .put("ledgerMeta", LedgerRepository.instance(context).exportMeta())
-                    .toString(2)
-                context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-            }.onSuccess { context.toast("已匯出 ${repo.cards.size} 張會員卡") }
-                .onFailure { context.toast("匯出失敗：${it.message}") }
+    val scope = rememberCoroutineScope()
+    var backingUp by remember { mutableStateOf(false) }
+    fun runBackup(target: Uri? = null) {
+        if (backingUp) return
+        backingUp = true
+        scope.launch {
+            val r = withContext(Dispatchers.IO) {
+                if (target != null) {
+                    runCatching { Backup.writeTo(context, target) }.onSuccess {
+                        settings.lastBackupAt = System.currentTimeMillis()
+                        settings.backupError = ""
+                    }
+                } else Backup.backupNow(context)
+            }
+            backingUp = false
+            r.onSuccess { context.toast("備份完成（${it / 1024 + 1} KB）") }
+                .onFailure { context.toast("備份失敗：${it.message}") }
         }
     }
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val backupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(Backup.MIME)
+    ) { uri ->
         if (uri != null) {
-            runCatching {
-                val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                    ?: error("無法讀取檔案")
-                runCatching { JSONObject(text.trim()) }.getOrNull()?.let { o ->
-                    o.optJSONObject("quick")?.let { settings.applyQuickJson(it) }
-                    o.optJSONObject("ledgerMeta")?.let { LedgerRepository.instance(context).importMeta(it) }
-                    o.optJSONArray("ledger")?.let { LedgerRepository.instance(context).importJson(it) }
-                }
-                repo.importJson(text)
-            }.onSuccess { context.toast("已匯入 $it 張會員卡") }
-                .onFailure { context.toast("匯入失敗：檔案格式不正確") }
+            Backup.rememberTarget(context, uri)
+            runBackup(uri)
         }
+    }
+    var restoreUri by remember { mutableStateOf<Uri?>(null) }
+    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) restoreUri = uri
+    }
+    restoreUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { restoreUri = null },
+            containerColor = Hud.Surface,
+            title = { Text("從備份還原？", color = Hud.Text) },
+            text = { Text("備份裡的卡片、記帳、設定會加入目前資料；同一張卡、同一筆帳會被備份內容覆蓋。", color = Hud.TextDim) },
+            confirmButton = {
+                TextButton(onClick = {
+                    restoreUri = null
+                    scope.launch {
+                        val r = withContext(Dispatchers.IO) { runCatching { Backup.restore(context, uri) } }
+                        r.onSuccess { context.toast("已還原 ${it.cards} 張卡、${it.entries} 筆帳、${it.photos} 張照片") }
+                            .onFailure { context.toast("還原失敗：檔案格式不正確") }
+                    }
+                }) { Text("還原") }
+            },
+            dismissButton = { TextButton(onClick = { restoreUri = null }) { Text("取消") } },
+        )
     }
 
     Box(
@@ -247,14 +273,40 @@ fun SettingsScreen(
                     HudDivider()
                     NavRow("管理資料夾", "${repo.folders.size} 個資料夾") { showFolders = true }
                     HudDivider()
-                    NavRow("匯出備份", "卡片、資料夾、快捷列、記帳都會備份成 JSON 檔") { exportLauncher.launch("member-cards-backup.json") }
+                }
+
+                HudSection("04", "雲端備份")
+                HudPanel {
+                    NavRow(
+                        if (settings.backupUri.isBlank()) "備份到 Google 雲端硬碟" else "更換備份位置",
+                        "存檔畫面點左上 ☰ →「雲端硬碟」，選資料夾後儲存。卡片、照片、記帳、設定全部備份",
+                    ) { backupLauncher.launch(Backup.suggestedName()) }
+                    if (settings.backupUri.isNotBlank()) {
+                        HudDivider()
+                        NavRow(
+                            if (backingUp) "備份中…" else "立即備份",
+                            buildString {
+                                append(
+                                    if (settings.lastBackupAt > 0) "上次備份：" + java.text.SimpleDateFormat("yyyy/MM/dd HH:mm", java.util.Locale.TAIWAN).format(java.util.Date(settings.lastBackupAt))
+                                    else "還沒有備份紀錄"
+                                )
+                                if (settings.backupError.isNotBlank()) append("\n⚠ 上次自動備份失敗：" + settings.backupError)
+                            },
+                        ) { runBackup() }
+                        HudDivider()
+                        SwitchRow(
+                            "每天自動備份",
+                            "每天凌晨自動覆寫雲端上的備份檔（需連網時才會上傳）",
+                            settings.autoBackup,
+                        ) { settings.autoBackup = it }
+                    }
                     HudDivider()
-                    NavRow("匯入備份", "從 JSON 備份檔還原，同一張卡會被覆蓋") {
-                        importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+                    NavRow("從備份還原", "選擇雲端硬碟或手機裡的備份檔（.zip，也支援舊版 .json）") {
+                        restoreLauncher.launch(arrayOf("application/zip", "application/json", "application/octet-stream", "text/plain", "*/*"))
                     }
                 }
 
-                HudSection("04", "系統")
+                HudSection("05", "系統")
                 HudPanel {
                     NavRow(
                         "自動點擊（無障礙權限）",

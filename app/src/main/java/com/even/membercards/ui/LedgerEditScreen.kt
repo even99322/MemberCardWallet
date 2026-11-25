@@ -90,6 +90,7 @@ fun LedgerEditScreen(
     prefillAmount: Double? = null,
     prefillMerchant: String = "",
     prefillMethod: String = "",
+    prefillType: String? = null,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -143,11 +144,12 @@ fun LedgerEditScreen(
             ?: ledger.defaultAccount
     }
 
-    var type by rememberSaveable { mutableStateOf(existing?.type ?: EntryType.EXPENSE) }
+    var type by rememberSaveable { mutableStateOf(existing?.type ?: prefillType ?: EntryType.EXPENSE) }
     var category by rememberSaveable {
         mutableStateOf(
             existing?.category
-                ?: if (prefillMerchant.isNotBlank()) Categories.guess(prefillMerchant, repo.cards.toList()) else "食物"
+                ?: if (prefillType == EntryType.INCOME) ledger.categories(EntryType.INCOME).firstOrNull()?.name ?: "薪水"
+                else if (prefillMerchant.isNotBlank()) Categories.guess(prefillMerchant, repo.cards.toList()) else "食物"
         )
     }
     var expr by rememberSaveable { mutableStateOf(fmt(existing?.amount ?: prefillAmount)) }

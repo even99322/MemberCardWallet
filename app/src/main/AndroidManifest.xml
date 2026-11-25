@@ -95,6 +95,18 @@
                 android:resource="@xml/carrier_widget_info" />
         </receiver>
 
+        <receiver
+            android:name=".LedgerWidget"
+            android:exported="false"
+            android:label="@string/ledger_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ledger_widget_info" />
+        </receiver>
+
         <!-- 快速設定磚：載具條碼 -->
         <service
             android:name=".CarrierTileService"

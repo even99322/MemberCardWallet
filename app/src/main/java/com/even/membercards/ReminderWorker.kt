@@ -160,7 +160,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : Worker(contex
         private fun openApp(context: Context): Intent =
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-        private fun ensureChannel(context: Context) {
+        fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT >= 26) {
                 val nm = context.getSystemService(NotificationManager::class.java)
                 if (nm.getNotificationChannel(CHANNEL) == null) {
@@ -174,7 +174,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : Worker(contex
         }
 
         @SuppressLint("MissingPermission")
-        private fun notify(context: Context, id: Int, title: String, text: String, intent: Intent) {
+        fun notify(context: Context, id: Int, title: String, text: String, intent: Intent) {
             if (!canNotify(context)) return
             val pi = PendingIntent.getActivity(
                 context,

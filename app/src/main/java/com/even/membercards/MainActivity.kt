@@ -66,6 +66,7 @@ sealed interface Screen {
         val amount: Double? = null,
         val merchant: String = "",
         val method: String = "",
+        val type: String? = null,
     ) : Screen
     data class Detail(val id: String) : Screen
     data class Edit(
@@ -84,7 +85,8 @@ sealed interface Incoming {
     data class Shared(val image: Uri?, val text: String?, val subject: String?) : Incoming
     data object ShowCarrier : Incoming
     data object ShowPhone : Incoming
-    data object AddEntry : Incoming
+    data class AddEntry(val type: String? = null) : Incoming
+    data object OpenLedger : Incoming
     data class ImportCard(val card: MemberCard) : Incoming
 }
 
@@ -100,6 +102,7 @@ class MainActivity : ComponentActivity() {
         settings = AppSettings.instance(applicationContext)
         Hud.palette = Palettes.of(settings.theme)
         java.io.File(filesDir, "invoices.json").delete() // 已移除的發票功能留下的檔案
+        if (settings.autoBackup) BackupWorker.schedule(applicationContext, true)
         applySystemBars(Hud.palette.isLight)
         Shortcuts.updateDynamic(applicationContext, repo.cards.toList())
         ReminderWorker.schedule(applicationContext, settings.reminders)
@@ -168,7 +171,8 @@ class MainActivity : ComponentActivity() {
 
             CarrierWidget.ACTION_SHOW_CARRIER -> Incoming.ShowCarrier
             CarrierWidget.ACTION_SHOW_PHONE -> Incoming.ShowPhone
-            Shortcuts.ACTION_ADD_ENTRY -> Incoming.AddEntry
+            Shortcuts.ACTION_ADD_ENTRY -> Incoming.AddEntry(intent.getStringExtra(LedgerWidget.EXTRA_TYPE))
+            LedgerWidget.ACTION_OPEN_LEDGER -> Incoming.OpenLedger
 
             Intent.ACTION_SEND -> {
                 val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
@@ -243,11 +247,17 @@ fun App(
                 }
             }
 
-            Incoming.AddEntry -> {
+            is Incoming.AddEntry -> {
                 stack.clear()
                 stack.add(Screen.Home)
                 stack.add(Screen.Ledger)
-                stack.add(Screen.LedgerEdit(null))
+                stack.add(Screen.LedgerEdit(null, type = incoming.type))
+            }
+
+            Incoming.OpenLedger -> {
+                stack.clear()
+                stack.add(Screen.Home)
+                stack.add(Screen.Ledger)
             }
 
             is Incoming.ImportCard -> importing = incoming.card
@@ -344,6 +354,7 @@ fun App(
             prefillAmount = current.amount,
             prefillMerchant = current.merchant,
             prefillMethod = current.method,
+            prefillType = current.type,
             onBack = { pop() },
         )
 

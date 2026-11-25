@@ -29,6 +29,8 @@
 
             <TextView
                 android:id="@+id/lw_month"
+                android:text="本月"
+                android:textColor="#FFF2F2F2"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -45,7 +47,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:scaleType="fitXY"
-                    android:src="@drawable/widget_white"
+                    android:src="@drawable/widget_badge"
                     android:contentDescription="@null" />
 
                 <TextView
@@ -57,12 +59,13 @@
                     android:paddingEnd="10dp"
                     android:paddingBottom="3dp"
                     android:text="會員卡夾"
+                    android:textColor="#FF05080F"
                     android:textSize="12sp"
                     android:textStyle="bold" />
             </FrameLayout>
         </LinearLayout>
 
-        <View
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
@@ -84,10 +87,13 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="支出"
+                    android:textColor="#FF9AA0A8"
                     android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/lw_exp"
+                    android:text="0"
+                    android:textColor="#FFF2F2F2"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:maxLines="1"
@@ -106,10 +112,13 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="收入"
+                    android:textColor="#FF9AA0A8"
                     android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/lw_inc"
+                    android:text="0"
+                    android:textColor="#FFF2F2F2"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:maxLines="1"
@@ -128,10 +137,13 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="結餘"
+                    android:textColor="#FF9AA0A8"
                     android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/lw_bal"
+                    android:text="0"
+                    android:textColor="#FFF2F2F2"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:maxLines="1"
@@ -140,7 +152,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <View
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
@@ -172,6 +184,7 @@
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:text="＋ 支出"
+                    android:textColor="#FFF2F2F2"
                     android:textSize="15sp"
                     android:textStyle="bold" />
             </FrameLayout>
@@ -197,6 +210,7 @@
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:text="＋ 收入"
+                    android:textColor="#FFF2F2F2"
                     android:textSize="15sp"
                     android:textStyle="bold" />
             </FrameLayout>

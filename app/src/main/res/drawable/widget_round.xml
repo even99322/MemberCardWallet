@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 白色圓角底，程式依主題染色 -->
+<!-- 預設深色圓角底；執行時依主題用 setColorFilter 換色 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#FFFFFFFF" />
+    <solid android:color="#FF1E1E1E" />
     <corners android:radius="22dp" />
 </shape>

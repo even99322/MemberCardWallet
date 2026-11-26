@@ -1,5 +1,7 @@
 package com.even.membercards.ui
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.fillMaxHeight
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -81,6 +83,7 @@ fun DetailScreen(
     id: String,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    onSetupPay: () -> Unit = {},
 ) {
     val card = repo.get(id) ?: return
     val context = LocalContext.current
@@ -151,9 +154,15 @@ fun DetailScreen(
             ) {
                 // 載具條碼（在會員條碼上方，店員可一次掃完）
                 if (carrierBmp != null) {
+                  // 載具＋右側快捷付款
+                  Row(
+                      Modifier.fillMaxWidth().height(128.dp),
+                      horizontalArrangement = Arrangement.spacedBy(8.dp),
+                  ) {
                     Column(
                         Modifier
-                            .fillMaxWidth()
+                            .weight(1f)
+                            .fillMaxHeight()
                             .clip(RoundedCornerShape(10.dp))
                             .background(Hud.Surface.copy(alpha = 0.9f))
                             .border(1.dp, Hud.Violet.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
@@ -168,20 +177,21 @@ fun DetailScreen(
                         Box(
                             Modifier
                                 .fillMaxWidth()
+                                .weight(1f)
                                 .background(Color.White, RoundedCornerShape(4.dp))
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .padding(horizontal = 8.dp, vertical = 8.dp)
                         ) {
                             Image(
                                 bitmap = carrierBmp.asImageBitmap(),
                                 contentDescription = "載具條碼",
                                 contentScale = ContentScale.FillBounds,
                                 filterQuality = FilterQuality.None,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(64.dp),
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                     }
+                    PayAppsColumn(settings, onSetupPay)
+                  }
                     Spacer(Modifier.height(16.dp))
                 }
 
@@ -523,3 +533,73 @@ fun DetailScreen(
 /** 純數字且較長時每 4 碼加空白，方便店員手動輸入。 */
 private fun prettyNumber(n: String): String =
     if (n.length > 8 && n.all { it.isDigit() }) n.chunked(4).joinToString(" ") else n
+
+
+/** 載具右側的快捷付款 App：超過 3 個時排成兩欄，可上下捲動 */
+@Composable
+private fun PayAppsColumn(settings: AppSettings, onSetup: () -> Unit) {
+    val context = LocalContext.current
+    val apps = settings.payApps
+    val cols = if (apps.size > 3) 2 else 1
+    Column(
+        Modifier
+            .width(if (cols == 2) 104.dp else 60.dp)
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Hud.Surface.copy(alpha = 0.9f))
+            .border(1.dp, Hud.Line, RoundedCornerShape(10.dp))
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("PAY", style = MonoLabel, color = Hud.Cyan)
+        Spacer(Modifier.height(4.dp))
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (apps.isEmpty()) {
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .border(1.dp, Hud.LineBright, RoundedCornerShape(10.dp))
+                        .clickable(onClick = onSetup),
+                    contentAlignment = Alignment.Center,
+                ) { Text("＋", color = Hud.Cyan, fontSize = 18.sp) }
+                Text("加付款", fontSize = 10.sp, color = Hud.TextDim)
+            }
+            apps.chunked(cols).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { app -> PayIcon(app.pkg, app.label) { StoreApps.launch(context, app.pkg, app.label) } }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PayIcon(pkg: String, label: String, onClick: () -> Unit) {
+    val icon = rememberAppIcon(pkg)
+    Column(
+        Modifier
+            .width(42.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (icon != null) {
+            Image(icon, label, Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)))
+        } else {
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .border(1.dp, Hud.Line, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) { Text(label.take(1), color = Hud.TextDim) }
+        }
+        Text(label, fontSize = 9.sp, color = Hud.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}

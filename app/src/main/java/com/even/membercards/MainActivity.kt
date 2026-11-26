@@ -382,6 +382,7 @@ fun App(
             id = current.id,
             onBack = { pop() },
             onEdit = { stack.add(Screen.Edit(current.id)) },
+            onSetupPay = { stack.add(Screen.QuickSetup) },
         )
 
         is Screen.Edit -> EditScreen(

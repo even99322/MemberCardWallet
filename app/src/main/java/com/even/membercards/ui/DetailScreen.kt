@@ -1,5 +1,10 @@
 package com.even.membercards.ui
 
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.fillMaxHeight
 import android.app.Activity
@@ -556,6 +561,8 @@ private fun PayAppsColumn(settings: AppSettings, onSetup: () -> Unit) {
         Column(
             Modifier
                 .weight(1f)
+                // 吃掉捲到底後剩下的滑動，主頁面不會跟著動
+                .nestedScroll(BlockParentScroll)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -602,4 +609,10 @@ private fun PayIcon(pkg: String, label: String, onClick: () -> Unit) {
         }
         Text(label, fontSize = 9.sp, color = Hud.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/** 把子清單捲剩的距離與甩動全部吃掉，不傳給外層 */
+private object BlockParentScroll : NestedScrollConnection {
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = available
 }

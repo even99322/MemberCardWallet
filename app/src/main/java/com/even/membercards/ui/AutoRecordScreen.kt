@@ -85,8 +85,8 @@ fun AutoRecordScreen(
     var pickCardApps by remember { mutableStateOf(false) }
     if (pickCardApps) {
         PickAppsDialog(
-            title = "刷卡通知來源",
-            hint = "勾選會推播「刷卡／消費通知」的 App（信用卡銀行 App、Google 錢包、行動支付）。需先在該 App 開啟消費通知。",
+            title = "銀行／信用卡通知來源",
+            hint = "勾選會推播帳戶異動或刷卡通知的 App（例如中國信託）。需先在該 App 開啟推播：轉出、入帳、提款、刷卡都會自動記帳。",
             initial = settings.cardApps.map { it.pkg },
             priority = { StoreApps.looksLikePayment(it) },
             onConfirm = { picked ->
@@ -203,9 +203,9 @@ fun AutoRecordScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("信用卡刷卡通知", color = Hud.Text, fontSize = 15.sp)
+                                    Text("銀行／信用卡通知", color = Hud.Text, fontSize = 15.sp)
                                     Text(
-                                        if (settings.cardApps.isEmpty()) "選擇會發刷卡通知的銀行 App、Google 錢包等，刷卡時自動記帳"
+                                        if (settings.cardApps.isEmpty()) "選擇中國信託等銀行 App、Google 錢包：刷卡、轉出記支出，入帳記收入，提款記轉帳"
                                         else "讀取：" + settings.cardApps.joinToString("、") { it.label },
                                         color = Hud.TextDim,
                                         fontSize = 12.sp,

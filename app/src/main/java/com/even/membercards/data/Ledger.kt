@@ -159,6 +159,7 @@ object Categories {
         Category("醫療", "🏥", 0xFF5B8CFF),
         Category("社交", "👥", 0xFFB39DDB),
         Category("居家", "🏠", 0xFF8D6E63),
+        Category("轉帳", "🔁", 0xFF4FC3F7),
         Category("其他", "💲", 0xFF8A9BB3),
     )
     val income = listOf(
@@ -461,13 +462,25 @@ class LedgerRepository private constructor(private val appContext: Context) {
      * 自動記帳（支出）；重複的通知（同 key，或 2 分鐘內同金額同商家）不會重複記。
      * 帳戶會優先選名稱與付款方式相符的帳戶（例如 LINE Pay）。
      */
-    fun addAuto(amount: Double, merchant: String, method: String, key: String, category: String): LedgerEntry? {
+    fun addAuto(
+        amount: Double,
+        merchant: String,
+        method: String,
+        key: String,
+        category: String,
+        type: String = EntryType.EXPENSE,
+        /** 銀行帳戶異動：優先記到銀行類帳戶，且不記錄位置 */
+        bank: Boolean = false,
+        toAccount: String = "",
+    ): LedgerEntry? {
         val now = System.currentTimeMillis()
         if (key.isNotBlank() && entries.any { it.key == key }) return null
-        if (entries.any { it.isAuto && it.amount == amount && it.merchant == merchant && now - it.time < 120_000 }) return null
+        if (entries.any { it.isAuto && it.amount == amount && it.merchant == merchant && it.type == type && now - it.time < 120_000 }) return null
         val acc = accounts.firstOrNull {
             it.name.contains(method, ignoreCase = true) || method.contains(it.name, ignoreCase = true)
-        }?.id ?: defaultAccount
+        }?.id
+            ?: (if (bank) accounts.firstOrNull { it.type == "bank" }?.id else null)
+            ?: defaultAccount
         val e = LedgerEntry(
             time = now,
             amount = amount,
@@ -476,14 +489,18 @@ class LedgerRepository private constructor(private val appContext: Context) {
             method = method,
             source = "auto",
             key = key,
-            type = EntryType.EXPENSE,
+            type = type,
             account = acc,
+            toAccount = toAccount,
         )
         entries.add(e)
         save()
-        maybeTagLocation(e)
+        if (!bank) maybeTagLocation(e)
         return e
     }
+
+    /** 現金帳戶（ATM 提款轉入用） */
+    fun cashAccountId(): String = accounts.firstOrNull { it.type == "cash" }?.id ?: ""
 
     fun logCapture(c: CapturedNotice) {
         captures.add(0, c)

@@ -6,7 +6,9 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.widget.Toast
 import com.even.membercards.data.AppSettings
+import com.even.membercards.data.BankParser
 import com.even.membercards.data.CapturedNotice
+import com.even.membercards.data.EntryType
 import com.even.membercards.data.CardRepository
 import com.even.membercards.data.Categories
 import com.even.membercards.data.LedgerRepository
@@ -47,6 +49,44 @@ class PayNotificationService : NotificationListenerService() {
         val method = sourceMethod(sbn.packageName, headline, text, settings) ?: return
 
         val ledger = LedgerRepository.instance(applicationContext)
+
+        // 銀行 App：帳戶轉出／入帳／提款
+        val isBankSource = settings.cardApps.any { it.pkg == sbn.packageName }
+        val bank = if (isBankSource) BankParser.parse(headline, text) else null
+        if (bank != null) {
+            val type = when (bank.kind) {
+                BankParser.Kind.OUT -> EntryType.EXPENSE
+                BankParser.Kind.IN -> EntryType.INCOME
+                BankParser.Kind.WITHDRAW -> EntryType.TRANSFER
+            }
+            val category = when (bank.kind) {
+                BankParser.Kind.OUT -> "轉帳"
+                BankParser.Kind.IN -> if (ledger.categories(EntryType.INCOME).any { it.name == "轉帳充正" }) "轉帳充正" else "其他收入"
+                BankParser.Kind.WITHDRAW -> ""
+            }
+            val cash = if (bank.kind == BankParser.Kind.WITHDRAW) ledger.cashAccountId() else ""
+            // 沒有現金帳戶時，提款改記成支出
+            val finalType = if (type == EntryType.TRANSFER && cash.isBlank()) EntryType.EXPENSE else type
+            val finalCategory = if (finalType == EntryType.EXPENSE && category.isBlank()) "其他" else category
+            val entry = ledger.addAuto(
+                amount = bank.amount,
+                merchant = bank.title,
+                method = method,
+                key = sbn.key + "|" + text.hashCode(),
+                category = finalCategory,
+                type = finalType,
+                bank = true,
+                toAccount = cash,
+            ) ?: return
+            Toast.makeText(
+                applicationContext,
+                "已自動記帳：${bank.title} ${formatMoney(entry.amount)}",
+                Toast.LENGTH_SHORT,
+            ).show()
+            ledger.logCapture(CapturedNotice(System.currentTimeMillis(), method, headline, text.take(400), entry.amount))
+            return
+        }
+
         val result = PayParser.parse(headline, text)
         var recorded: Double? = null
         if (result != null) {

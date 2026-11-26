@@ -65,6 +65,7 @@ class PayNotificationService : NotificationListenerService() {
                 BankParser.Kind.WITHDRAW -> ""
             }
             val cash = if (bank.kind == BankParser.Kind.WITHDRAW) ledger.cashAccountId() else ""
+            val acc = ledger.resolveAutoAccount(sbn.packageName, method, "$headline\n$text", bankEvent = true)
             // 沒有現金帳戶時，提款改記成支出
             val finalType = if (type == EntryType.TRANSFER && cash.isBlank()) EntryType.EXPENSE else type
             val finalCategory = if (finalType == EntryType.EXPENSE && category.isBlank()) "其他" else category
@@ -72,15 +73,18 @@ class PayNotificationService : NotificationListenerService() {
                 amount = bank.amount,
                 merchant = bank.title,
                 method = method,
-                key = sbn.key + "|" + text.hashCode(),
+                key = "bank:" + sbn.key + "|" + text.hashCode(),
                 category = finalCategory,
                 type = finalType,
                 bank = true,
                 toAccount = cash,
+                accountId = acc,
             ) ?: return
+            val paired = ledger.pairBankTransfer(entry)
             Toast.makeText(
                 applicationContext,
-                "已自動記帳：${bank.title} ${formatMoney(entry.amount)}",
+                if (paired.isTransfer && paired.id != entry.id || paired.key.contains("||")) "已合併為帳戶間轉帳 ${formatMoney(entry.amount)}"
+                else "已自動記帳：${bank.title} ${formatMoney(entry.amount)}",
                 Toast.LENGTH_SHORT,
             ).show()
             ledger.logCapture(CapturedNotice(System.currentTimeMillis(), method, headline, text.take(400), entry.amount))
@@ -92,12 +96,14 @@ class PayNotificationService : NotificationListenerService() {
         if (result != null) {
             val cards = CardRepository.instance(applicationContext).cards.toList()
             val merchant = result.merchant
+            val source = if (method == "LINE Pay" && sbn.packageName == LINE_PACKAGE) "linepay" else sbn.packageName
             val entry = ledger.addAuto(
                 amount = result.amount,
                 merchant = merchant,
                 method = method,
                 key = sbn.key + "|" + text.hashCode(),
                 category = Categories.guess(merchant, cards),
+                accountId = ledger.resolveAutoAccount(source, method, "$headline\n$text", bankEvent = false),
             )
             if (entry != null) {
                 recorded = entry.amount

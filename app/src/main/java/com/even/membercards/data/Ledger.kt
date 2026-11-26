@@ -314,6 +314,9 @@ class LedgerRepository private constructor(private val appContext: Context) {
     private val defaultAccountState = mutableStateOf("")
     private val autoPopupState = mutableStateOf(false)
 
+    /** 自動記帳來源（"linepay" 或 App 套件名）→ 帳戶 id；使用者指定的對應 */
+    val sourceAccounts = androidx.compose.runtime.mutableStateMapOf<String, String>()
+
     /** 新增記帳時預設的帳戶 id */
     var defaultAccount: String
         get() = defaultAccountState.value.takeIf { id -> accounts.any { it.id == id } } ?: accounts.firstOrNull()?.id.orEmpty()
@@ -380,6 +383,10 @@ class LedgerRepository private constructor(private val appContext: Context) {
         }
         defaultAccountState.value = o.optString("defaultAccount")
         autoPopupState.value = o.optBoolean("autoPopupAccount", false)
+        o.optJSONObject("sourceAccounts")?.let { m ->
+            sourceAccounts.clear()
+            m.keys().forEach { k -> m.optString(k).takeIf { it.isNotBlank() }?.let { sourceAccounts[k] = it } }
+        }
     }
 
     fun exportMeta(): JSONObject {
@@ -395,6 +402,7 @@ class LedgerRepository private constructor(private val appContext: Context) {
             .put("recurring", rec)
             .put("defaultAccount", defaultAccountState.value)
             .put("autoPopupAccount", autoPopupState.value)
+            .put("sourceAccounts", JSONObject().also { m -> sourceAccounts.forEach { (k, v) -> m.put(k, v) } })
     }
 
     fun importMeta(o: JSONObject) {
@@ -472,15 +480,21 @@ class LedgerRepository private constructor(private val appContext: Context) {
         /** 銀行帳戶異動：優先記到銀行類帳戶，且不記錄位置 */
         bank: Boolean = false,
         toAccount: String = "",
+        accountId: String? = null,
     ): LedgerEntry? {
         val now = System.currentTimeMillis()
-        if (key.isNotBlank() && entries.any { it.key == key }) return null
+        if (key.isNotBlank() && entries.any { it.key == key || it.key.split("||").contains(key) }) return null
         if (entries.any { it.isAuto && it.amount == amount && it.merchant == merchant && it.type == type && now - it.time < 120_000 }) return null
-        val acc = accounts.firstOrNull {
-            it.name.contains(method, ignoreCase = true) || method.contains(it.name, ignoreCase = true)
-        }?.id
+        val acc = accountId?.takeIf { id -> accounts.any { it.id == id } }
+            ?: accounts.firstOrNull {
+                it.name.contains(method, ignoreCase = true) || method.contains(it.name, ignoreCase = true)
+            }?.id
             ?: (if (bank) accounts.firstOrNull { it.type == "bank" }?.id else null)
             ?: defaultAccount
+        // 同一筆消費常會收到兩則通知（例如 LINE Pay 付款＋信用卡刷卡通知）：3 分鐘內同帳戶同金額的支出視為重複
+        if (!bank && type == EntryType.EXPENSE &&
+            entries.any { it.isAuto && it.isExpense && it.amount == amount && it.account == acc && now - it.time < 180_000 }
+        ) return null
         val e = LedgerEntry(
             time = now,
             amount = amount,
@@ -497,6 +511,73 @@ class LedgerRepository private constructor(private val appContext: Context) {
         save()
         if (!bank) maybeTagLocation(e)
         return e
+    }
+
+    fun setSourceAccount(source: String, accountId: String?) {
+        if (accountId.isNullOrBlank()) sourceAccounts.remove(source) else sourceAccounts[source] = accountId
+        saveMeta()
+    }
+
+    /**
+     * 自動記帳要記到哪個帳戶。
+     * - 消費：通知提到某張信用卡（例如「LINE Pay卡」）就記到那張信用卡帳戶
+     * - 使用者指定的來源對應
+     * - 名稱相符的帳戶（消費優先信用卡，銀行異動優先銀行帳戶）
+     * - 銀行異動找不到帳戶時，自動以 App 名稱建立銀行帳戶
+     */
+    fun resolveAutoAccount(source: String, method: String, text: String, bankEvent: Boolean): String {
+        if (!bankEvent && source != "linepay") {
+            val credits = accounts.filter { it.isCredit }
+            credits.firstOrNull { c ->
+                val kw = c.name.replace("信用卡", "").replace("卡", "").trim()
+                kw.length >= 2 && text.contains(kw, ignoreCase = true)
+            }?.let { return it.id }
+            if (credits.size == 1 && Regex("卡號|末四碼|末4碼|信用卡|刷卡").containsMatchIn(text)) return credits[0].id
+        }
+        sourceAccounts[source]?.takeIf { id -> accounts.any { it.id == id } }?.let { return it }
+        val matches = accounts.filter {
+            it.name.contains(method, ignoreCase = true) || method.contains(it.name, ignoreCase = true)
+        }
+        val pick = if (bankEvent) matches.firstOrNull { it.type == "bank" } ?: matches.firstOrNull()
+        else matches.sortedBy { if (it.isCredit) 0 else if (it.type == "virtual") 1 else 2 }.firstOrNull()
+        if (pick != null) return pick.id
+        if (bankEvent) {
+            val name = method.replace(Regex("\\s*(行動銀行|Home Bank|網路銀行|行動網銀|App)$", RegexOption.IGNORE_CASE), "").trim().ifBlank { method }
+            val a = Account(name = name, type = "bank", emoji = "🏦")
+            accounts.add(a)
+            sourceAccounts[source] = a.id
+            saveMeta()
+            return a.id
+        }
+        return defaultAccount
+    }
+
+    /**
+     * 自己帳戶間轉帳：A 銀行轉出、B 銀行入帳，金額相同且 30 分鐘內 → 合併成一筆「轉帳」，不重複算支出與收入。
+     */
+    fun pairBankTransfer(e: LedgerEntry): LedgerEntry {
+        if (!e.key.startsWith("bank:") || (e.type != EntryType.EXPENSE && e.type != EntryType.INCOME)) return e
+        val other = entries.firstOrNull { o ->
+            o.id != e.id && o.key.startsWith("bank:") && o.amount == e.amount && o.account != e.account &&
+                kotlin.math.abs(o.time - e.time) <= 30 * 60_000L &&
+                ((o.type == EntryType.EXPENSE && e.type == EntryType.INCOME) || (o.type == EntryType.INCOME && e.type == EntryType.EXPENSE))
+        } ?: return e
+        val out = if (e.type == EntryType.EXPENSE) e else other
+        val inn = if (e.type == EntryType.INCOME) e else other
+        val fromName = accounts.firstOrNull { it.id == out.account }?.name.orEmpty()
+        val toName = accounts.firstOrNull { it.id == inn.account }?.name.orEmpty()
+        val t = out.copy(
+            type = EntryType.TRANSFER,
+            toAccount = inn.account,
+            category = "",
+            merchant = "轉帳 $fromName → $toName",
+            key = out.key + "||" + inn.key,
+            time = minOf(out.time, inn.time),
+        )
+        entries.removeAll { it.id == out.id || it.id == inn.id }
+        entries.add(t)
+        save()
+        return t
     }
 
     /** 現金帳戶（ATM 提款轉入用） */

@@ -1,5 +1,6 @@
 package com.even.membercards.ui
 
+import androidx.compose.material3.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
@@ -214,6 +215,8 @@ fun AutoRecordScreen(
                                 Text("選擇 ›", color = Hud.Cyan, fontSize = 13.sp)
                             }
                             HudDivider()
+                            SourceAccountRows(ledger, settings)
+                            HudDivider()
                             RecordLocationRow(settings)
                         }
                     }
@@ -342,5 +345,71 @@ private fun CaptureRow(c: CapturedNotice, onRecord: () -> Unit) {
         Spacer(Modifier.height(4.dp))
         Text(c.title, color = Hud.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(c.text, color = Hud.TextDim, fontSize = 12.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+
+/** 每個自動記帳來源要記到哪個帳戶 */
+@Composable
+private fun SourceAccountRows(ledger: LedgerRepository, settings: AppSettings) {
+    val sources = listOf("linepay" to "LINE Pay") + settings.cardApps.map { it.pkg to it.label }
+    var picking by remember { mutableStateOf<Pair<String, String>?>(null) }
+    Text("帳戶對應", color = Hud.Text, fontSize = 15.sp, modifier = Modifier.padding(top = 8.dp))
+    Text(
+        "每個來源記到哪個帳戶。「自動」會依帳戶名稱判斷；通知提到某張信用卡（例如 LINE Pay卡）時會記到那張卡。",
+        color = Hud.TextDim,
+        fontSize = 12.sp,
+    )
+    sources.forEach { (key, label) ->
+        val mapped = ledger.sourceAccounts[key]?.let { id -> ledger.accounts.firstOrNull { it.id == id } }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { picking = key to label }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, color = Hud.Text, fontSize = 14.sp, modifier = Modifier.weight(1f), maxLines = 1)
+            Text(
+                mapped?.let { "${it.emoji} ${it.name}" } ?: "自動",
+                color = if (mapped != null) Hud.Cyan else Hud.TextDim,
+                fontSize = 13.sp,
+            )
+            Text("  ›", color = Hud.TextDim, fontSize = 13.sp)
+        }
+    }
+    picking?.let { (key, label) ->
+        AlertDialog(
+            onDismissRequest = { picking = null },
+            containerColor = Hud.Surface,
+            title = { Text("$label 記到", color = Hud.Text) },
+            text = {
+                Column {
+                    val current = ledger.sourceAccounts[key]
+                    (listOf<com.even.membercards.data.Account?>(null) + ledger.accounts).forEach { a ->
+                        val sel = a?.id == current || (a == null && current == null)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    ledger.setSourceAccount(key, a?.id)
+                                    picking = null
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                a?.let { "${it.emoji}  ${it.name}" } ?: "自動判斷",
+                                color = if (sel) Hud.Cyan else Hud.Text,
+                                fontSize = 15.sp,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (sel) Text("✓", color = Hud.Cyan)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { picking = null }) { Text("取消") } },
+        )
     }
 }
